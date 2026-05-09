@@ -15,7 +15,7 @@ Maintain Ops Suite is an integrated operations management platform built for fie
 
 Pairs with the Maintain Ops Suite Android app for field technician mobile access.
     ]]></description>
-    <version>1.3.3</version>
+    <version>1.4.0</version>
     <licence>AGPL-3.0-or-later</licence>
     <author mail="contact@altotechnologiesllc.com" homepage="https://github.com/Cyberseal89">Alto Technologies LLC</author>
     <namespace>OpsSuite</namespace>
