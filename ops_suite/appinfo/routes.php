@@ -46,6 +46,13 @@ return [
         ['name' => 'settings#get',  'url' => '/api/settings', 'verb' => 'GET'],
         ['name' => 'settings#save', 'url' => '/api/settings', 'verb' => 'POST'],
 
+        // ── Platforms ─────────────────────────────────────────────
+        ['name' => 'platform#index',      'url' => '/api/platforms',              'verb' => 'GET'],
+        ['name' => 'platform#myPlatforms','url' => '/api/platforms/mine',         'verb' => 'GET'],
+        ['name' => 'platform#show',       'url' => '/api/platforms/{id}',         'verb' => 'GET'],
+        ['name' => 'platform#create',     'url' => '/api/platforms',              'verb' => 'POST'],
+        ['name' => 'platform#update',     'url' => '/api/platforms/{id}',         'verb' => 'PUT'],
+        ['name' => 'platform#destroy',    'url' => '/api/platforms/{id}',         'verb' => 'DELETE'],
         // ── Files (SOP picker + folder listing) ───────────────────
         ['name' => 'files#sopFolder',  'url' => '/api/files/sop',         'verb' => 'GET'],
         ['name' => 'files#listFolder', 'url' => '/api/files/list',        'verb' => 'GET'],
