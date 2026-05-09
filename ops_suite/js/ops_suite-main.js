@@ -850,7 +850,7 @@ function viewProcedureDetail(p, onClose) {
   var actRow = el('div', {style:'display:flex;gap:10px;margin-top:24px;'});
   var editBtn = el('button', {style:'padding:8px 18px;border-radius:8px;border:1.5px solid #3e4a65;background:#2d3548;color:#cbd5e1;font-size:13px;font-weight:600;cursor:pointer;', text:'Edit'});
   editBtn.onclick = async () => {
-    document.querySelector('.ops-modal-overlay, [style*="z-index:999999"]')?.remove();
+    overlay.remove();
     var f = await buildProcedureForm(p, null);
     modal('Edit Procedure — ' + p.proc_id_label, f.wrap, async () => {
       await API.procedures.update(p.id, f.collect());
@@ -859,19 +859,26 @@ function viewProcedureDetail(p, onClose) {
   };
   var doneBtn2 = el('button', {style:'padding:8px 18px;border-radius:8px;border:1.5px solid #16803a;background:rgba(22,128,58,0.2);color:#4ade80;font-size:13px;font-weight:700;cursor:pointer;', text:'✓ Mark Complete'});
   doneBtn2.onclick = () => {
-    document.querySelector('[style*="z-index:999999"]')?.remove();
+    overlay.remove();
     showCompleteModal(p, onClose || (()=>{}));
   };
   actRow.appendChild(editBtn);
   actRow.appendChild(doneBtn2);
   body.appendChild(actRow);
 
-  modal(p.name, body, null, null);
-  // Hide the footer save button since we have our own actions
-  setTimeout(() => {
-    var footer = document.querySelector('[style*="z-index:999999"] [style*="border-top"]');
-    if (footer) footer.style.display = 'none';
-  }, 0);
+  // View-only modal — build it manually without a save button
+  var overlay=el('div',{style:'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;'});
+  var box=el('div',{style:'background:#1e2540;border:1px solid #3e4a65;border-radius:16px;width:740px;max-width:calc(100vw - 40px);max-height:calc(100vh - 60px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,0.9);'});
+  var hdr=el('div',{style:'display:flex;align-items:center;padding:20px 24px;border-bottom:1px solid #2e3650;flex-shrink:0;background:#161d30;'});
+  var h2=el('h2',{style:'font-size:17px;font-weight:800;margin:0;flex:1;color:#e2e8f0;font-family:inherit;',text:p.name});
+  var xb=el('button',{style:'background:none;border:none;cursor:pointer;font-size:20px;color:#64748b;',text:'✕',onclick:()=>overlay.remove()});
+  hdr.appendChild(h2); hdr.appendChild(xb);
+  var bodyWrap=el('div',{style:'padding:24px;overflow-y:auto;flex:1;'});
+  bodyWrap.appendChild(body);
+  box.appendChild(hdr); box.appendChild(bodyWrap);
+  overlay.appendChild(box);
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
 }
 
 /* ── Procedure Detail View ── */
@@ -942,7 +949,7 @@ function viewProcedureDetail(p, onClose) {
   var actRow = el('div', {style:'display:flex;gap:10px;margin-top:24px;'});
   var editBtn = el('button', {style:'padding:8px 18px;border-radius:8px;border:1.5px solid #3e4a65;background:#2d3548;color:#cbd5e1;font-size:13px;font-weight:600;cursor:pointer;', text:'Edit'});
   editBtn.onclick = async () => {
-    document.querySelector('.ops-modal-overlay, [style*="z-index:999999"]')?.remove();
+    overlay.remove();
     var f = await buildProcedureForm(p, null);
     modal('Edit Procedure — ' + p.proc_id_label, f.wrap, async () => {
       await API.procedures.update(p.id, f.collect());
@@ -951,19 +958,26 @@ function viewProcedureDetail(p, onClose) {
   };
   var doneBtn2 = el('button', {style:'padding:8px 18px;border-radius:8px;border:1.5px solid #16803a;background:rgba(22,128,58,0.2);color:#4ade80;font-size:13px;font-weight:700;cursor:pointer;', text:'✓ Mark Complete'});
   doneBtn2.onclick = () => {
-    document.querySelector('[style*="z-index:999999"]')?.remove();
+    overlay.remove();
     showCompleteModal(p, onClose || (()=>{}));
   };
   actRow.appendChild(editBtn);
   actRow.appendChild(doneBtn2);
   body.appendChild(actRow);
 
-  modal(p.name, body, null, null);
-  // Hide the footer save button since we have our own actions
-  setTimeout(() => {
-    var footer = document.querySelector('[style*="z-index:999999"] [style*="border-top"]');
-    if (footer) footer.style.display = 'none';
-  }, 0);
+  // View-only modal — build it manually without a save button
+  var overlay=el('div',{style:'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;'});
+  var box=el('div',{style:'background:#1e2540;border:1px solid #3e4a65;border-radius:16px;width:740px;max-width:calc(100vw - 40px);max-height:calc(100vh - 60px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,0.9);'});
+  var hdr=el('div',{style:'display:flex;align-items:center;padding:20px 24px;border-bottom:1px solid #2e3650;flex-shrink:0;background:#161d30;'});
+  var h2=el('h2',{style:'font-size:17px;font-weight:800;margin:0;flex:1;color:#e2e8f0;font-family:inherit;',text:p.name});
+  var xb=el('button',{style:'background:none;border:none;cursor:pointer;font-size:20px;color:#64748b;',text:'✕',onclick:()=>overlay.remove()});
+  hdr.appendChild(h2); hdr.appendChild(xb);
+  var bodyWrap=el('div',{style:'padding:24px;overflow-y:auto;flex:1;'});
+  bodyWrap.appendChild(body);
+  box.appendChild(hdr); box.appendChild(bodyWrap);
+  overlay.appendChild(box);
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
 }
 
 /* ── PM Closeout Modal ── */
