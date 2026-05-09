@@ -50,7 +50,16 @@ class DashboardController extends Controller {
     public function myStats(): DataResponse {
         $user = $this->userSession->getUser();
         $uid  = $user ? $user->getUID() : '';
+        // Fallback: read from Basic Auth header if session user is null
+        if ($uid === '') {
+            $authHeader = $this->request->getHeader('Authorization');
+            if ($authHeader && str_starts_with($authHeader, 'Basic ')) {
+                $decoded = base64_decode(substr($authHeader, 6));
+                $uid = explode(':', $decoded, 2)[0];
+            }
+        }
         return new DataResponse([
+            'uid'                  => $uid,
             'my_open_deficiencies' => $this->deficiencyMapper->countOpenAssignedTo($uid),
             'my_overdue_pm'        => $this->procedureMapper->countOverdueAssignedTo($uid),
             'my_total_pm'          => $this->procedureMapper->countAssignedTo($uid),
