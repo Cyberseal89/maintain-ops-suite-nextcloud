@@ -55,7 +55,7 @@ var API = {
                   get:        id      => req('GET',  '/api/procedures/'+id),
                   create:     d       => req('POST', '/api/procedures', d),
                   update:     (id,d)  => req('PUT',  '/api/procedures/'+id, d),
-                  complete:   id      => req('POST', '/api/procedures/'+id+'/complete', {}),
+                  complete:   (id, data) => req('POST', '/api/procedures/'+id+'/complete', data||{}),
                   del:        id      => req('DELETE','/api/procedures/'+id) },
   deficiencies: { list:       p       => req('GET',  '/api/deficiencies'+qs(p)),
                   get:        id      => req('GET',  '/api/deficiencies/'+id),
@@ -768,7 +768,7 @@ async function viewPmDashboard() {
   oc.appendChild(div('ops-card-header',[el('h3',{text:'⚠ Overdue — Action Required'})]));
   oc.appendChild(makeTable(['Procedure','Asset','Overdue By','Assigned',''],
     overdue.map(p=>{
-      var doneBtn=btn('success ops-btn-sm','✓ Done',async()=>{ await API.procedures.complete(p.id); viewPmDashboard(); });
+      var doneBtn=btn('success ops-btn-sm','✓ Done',()=>{ showCompleteModal(p, viewPmDashboard); });
       return [el('strong',{text:p.name}),span('ops-link-chip','#'+p.asset_id),
         span('ops-badge badge-red',overdueDays(p.next_due)+'d'),p.assigned_to||span('ops-danger ops-small','Unassigned'),doneBtn];
     })));
@@ -780,6 +780,68 @@ async function viewPmDashboard() {
       p.document_ref?sopLink(p.document_ref):span('ops-muted','—'),p.assigned_to||'—'])));
   two.appendChild(sc);
   wrap.appendChild(two);
+}
+
+/* ── PM Closeout Modal ── */
+function showCompleteModal(proc, onDone) {
+  var overlay = div('ops-modal-overlay');
+  var modal   = div('ops-modal');
+  modal.appendChild(el('h3', {text: '✓ Complete: ' + proc.name}));
+  modal.appendChild(el('p',  {cls:'ops-muted', text: proc.proc_id_label + ' · ' + proc.periodicity}));
+
+  function field(label, type, placeholder) {
+    var wrap = div('ops-field');
+    wrap.appendChild(el('label', {text: label}));
+    var input = el('input', {});
+    input.type = type || 'text';
+    input.placeholder = placeholder || '';
+    input.className = 'ops-input';
+    wrap.appendChild(input);
+    return { wrap, input };
+  }
+
+  var hours     = field('Hours Spent',    'number', 'e.g. 2.5');
+  var partsCost = field('Parts Cost ($)', 'number', 'e.g. 45.00');
+  var laborCost = field('Labor Cost ($)', 'number', 'e.g. 120.00');
+
+  var notesWrap = div('ops-field');
+  notesWrap.appendChild(el('label', {text: 'Completion Notes'}));
+  var notesInput = document.createElement('textarea');
+  notesInput.className = 'ops-input';
+  notesInput.rows = 4;
+  notesInput.placeholder = 'What was done, findings, parts replaced…';
+  notesWrap.appendChild(notesInput);
+
+  [hours.wrap, partsCost.wrap, laborCost.wrap, notesWrap].forEach(w => modal.appendChild(w));
+
+  var btnRow = div('ops-btn-row');
+
+  var cancelBtn = btn('secondary', 'Cancel', () => document.body.removeChild(overlay));
+
+  var submitBtn = btn('success', '✓ Mark Complete', async () => {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+    try {
+      var data = {};
+      if (hours.input.value)     data.actual_hours      = parseFloat(hours.input.value);
+      if (partsCost.input.value) data.actual_parts_cost = parseFloat(partsCost.input.value);
+      if (laborCost.input.value) data.actual_labor_cost = parseFloat(laborCost.input.value);
+      if (notesInput.value)      data.completion_notes  = notesInput.value;
+      await API.procedures.complete(proc.id, data);
+      document.body.removeChild(overlay);
+      onDone();
+    } catch(e) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = '✓ Mark Complete';
+      alert('Error: ' + e.message);
+    }
+  });
+
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(submitBtn);
+  modal.appendChild(btnRow);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
 }
 
 /* ── PM Procedures ── */
@@ -823,7 +885,7 @@ async function viewPmProcedures() {
             await API.procedures.update(p.id,f.collect()); load();
           },'Save Changes');
         };
-        var doneBtn=btn('success ops-btn-sm','✓ Done',async e=>{ e.stopPropagation(); await API.procedures.complete(p.id); load(); });
+        var doneBtn=btn('success ops-btn-sm','✓ Done',e=>{ e.stopPropagation(); showCompleteModal(p, load); });
         var actionWrap=div(''); actionWrap.style.cssText='display:flex;gap:4px;';
         actionWrap.appendChild(editBtn); actionWrap.appendChild(doneBtn);
         return [span('ops-muted',p.proc_id_label),el('strong',{text:p.name}),span('ops-link-chip','#'+p.asset_id),

@@ -312,3 +312,26 @@
 
 /* ── SOP doc ref icon ───────────────────────────────────────── */
 .ops-doc-ref { cursor: pointer; font-size: 16px; }
+
+/* ── Closeout Modal ─────────────────────────────────────────── */
+.ops-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999;
+}
+.ops-modal {
+  background: #1e2540; border-radius: 12px; padding: 28px;
+  width: 100%; max-width: 480px; border: 1px solid #2e3650;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.ops-modal h3 { color: #e2e8f0; margin: 0 0 4px; font-size: 16px; font-weight: 700; }
+.ops-modal .ops-muted { color: #64748b; font-size: 13px; margin: 0 0 20px; }
+.ops-field { margin-bottom: 16px; }
+.ops-field label { display: block; font-size: 11px; font-weight: 700; color: #64748b;
+  text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
+.ops-input { width: 100%; background: #0f172a; border: 1px solid #2e3650;
+  border-radius: 8px; padding: 10px 12px; color: #e2e8f0; font-size: 14px;
+  box-sizing: border-box; }
+.ops-input:focus { outline: none; border-color: #38bdf8; }
+textarea.ops-input { resize: vertical; }
+.ops-btn-row { display: flex; gap: 10px; margin-top: 24px; justify-content: flex-end; }
