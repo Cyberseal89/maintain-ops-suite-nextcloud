@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <id>ops_suite</id>
+    <name>Maintain Ops Suite</name>
+    <summary>Configuration, Preventive Maintenance, and Deficiency Tracking</summary>
+    <description><![CDATA[
+Ops Suite is an integrated operations management platform with three modules:
+
+1. Configuration Tracker — Hardware, software, and firmware digital twin. Assets are
+   fully cross-linked so you always know what software and firmware runs on which hardware
+   and where it lives.
+
+2. Preventive Maintenance — Schedule and track PM procedures linked to configuration assets.
+   Track periodicity, last completed, next due date, assigned technician, and linked SOP
+   documents. Automatically calculates next-due dates and flags overdue items.
+
+3. Deficiency Tracking — Log and manage deficiencies found during PM inspections or
+   discovered on walkdowns. Tracks severity (SEV-1 through SEV-5), troubleshooting history,
+   cost estimates (parts/labor/contractor), man-days, outside entity requirements, and
+   assignment to Nextcloud users.
+    ]]></description>
+    <version>1.0.4</version>
+    <licence>agpl</licence>
+    <author mail="cyberseal89@github.com">Your Organization</author>
+    <namespace>OpsSuite</namespace>
+    <category>organization</category>
+    <dependencies>
+        <nextcloud min-version="27" max-version="32"/>
+    </dependencies>
+    <navigations>
+        <navigation>
+            <name>Maintain Ops Suite</name>
+            <route>ops_suite.page.index</route>
+            <icon>app.svg</icon>
+            <order>10</order>
+        </navigation>
+    </navigations>
+</info>

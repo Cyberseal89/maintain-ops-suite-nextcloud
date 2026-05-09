@@ -1,0 +1,53 @@
+<?php
+declare(strict_types=1);
+return [
+    'routes' => [
+        // ── Page ──────────────────────────────────────────────────
+        ['name' => 'page#index', 'url' => '/', 'verb' => 'GET'],
+
+        // ── Assets ────────────────────────────────────────────────
+        ['name' => 'asset#index',   'url' => '/api/assets',      'verb' => 'GET'],
+        ['name' => 'asset#show',    'url' => '/api/assets/{id}', 'verb' => 'GET'],
+        ['name' => 'asset#create',  'url' => '/api/assets',      'verb' => 'POST'],
+        ['name' => 'asset#update',  'url' => '/api/assets/{id}', 'verb' => 'PUT'],
+        ['name' => 'asset#destroy', 'url' => '/api/assets/{id}', 'verb' => 'DELETE'],
+
+        // ── Procedures ────────────────────────────────────────────
+        ['name' => 'procedure#index',    'url' => '/api/procedures',               'verb' => 'GET'],
+        ['name' => 'procedure#show',     'url' => '/api/procedures/{id}',          'verb' => 'GET'],
+        ['name' => 'procedure#create',   'url' => '/api/procedures',               'verb' => 'POST'],
+        ['name' => 'procedure#update',   'url' => '/api/procedures/{id}',          'verb' => 'PUT'],
+        ['name' => 'procedure#complete', 'url' => '/api/procedures/{id}/complete', 'verb' => 'POST'],
+        ['name' => 'procedure#destroy',  'url' => '/api/procedures/{id}',          'verb' => 'DELETE'],
+
+        // ── Deficiencies ──────────────────────────────────────────
+        ['name' => 'deficiency#index',   'url' => '/api/deficiencies',      'verb' => 'GET'],
+        ['name' => 'deficiency#show',    'url' => '/api/deficiencies/{id}', 'verb' => 'GET'],
+        ['name' => 'deficiency#create',  'url' => '/api/deficiencies',      'verb' => 'POST'],
+        ['name' => 'deficiency#update',  'url' => '/api/deficiencies/{id}', 'verb' => 'PUT'],
+        ['name' => 'deficiency#destroy', 'url' => '/api/deficiencies/{id}', 'verb' => 'DELETE'],
+
+        // ── Deficiency History ────────────────────────────────────
+        ['name' => 'deficiency_history#create',
+         'url'  => '/api/deficiencies/{deficiencyId}/history',
+         'verb' => 'POST'],
+
+        // ── Dashboard ─────────────────────────────────────────────
+        ['name' => 'dashboard#stats', 'url' => '/api/dashboard/stats', 'verb' => 'GET'],
+
+        // ── Users ─────────────────────────────────────────────────
+        ['name' => 'user#index', 'url' => '/api/users', 'verb' => 'GET'],
+
+        // ── Groups ────────────────────────────────────────────────
+        ['name' => 'user#groups', 'url' => '/api/groups', 'verb' => 'GET'],
+
+        // ── Settings ──────────────────────────────────────────────
+        ['name' => 'settings#get',  'url' => '/api/settings', 'verb' => 'GET'],
+        ['name' => 'settings#save', 'url' => '/api/settings', 'verb' => 'POST'],
+
+        // ── Files (SOP picker + folder listing) ───────────────────
+        ['name' => 'files#sopFolder',  'url' => '/api/files/sop',         'verb' => 'GET'],
+        ['name' => 'files#listFolder', 'url' => '/api/files/list',        'verb' => 'GET'],
+        ['name' => 'files#openUrl',    'url' => '/api/files/open-url',    'verb' => 'GET'],
+    ],
+];

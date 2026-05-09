@@ -1,0 +1,30 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# PHP / Composer
+vendor/
+composer.lock
+
+# Node (if adding build tools later)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Build artifacts
+*.zip
+*.tar.gz
+build/
+
+# NC dev
+ops_suite/data/
+ops_suite/config/config.php
+
+# Logs
+*.log
