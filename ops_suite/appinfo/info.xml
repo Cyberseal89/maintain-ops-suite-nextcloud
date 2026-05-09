@@ -20,7 +20,7 @@ Ops Suite is an integrated operations management platform with three modules:
    cost estimates (parts/labor/contractor), man-days, outside entity requirements, and
    assignment to Nextcloud users.
     ]]></description>
-    <version>1.0.5</version>
+    <version>1.0.6</version>
     <licence>agpl</licence>
     <author mail="cyberseal89@github.com">Your Organization</author>
     <namespace>OpsSuite</namespace>

@@ -28,7 +28,8 @@ class ProcedureController extends Controller {
     public function index(): DataResponse {
         $assetId     = $this->request->getParam('asset_id');
         $overdueOnly = $this->request->getParam('overdue') === '1';
-        $procs = $this->mapper->findAll($assetId ? (int)$assetId : null, $overdueOnly);
+        $assignedTo  = $this->request->getParam('assigned_to') ?: null;
+        $procs = $this->mapper->findAll($assetId ? (int)$assetId : null, $overdueOnly, $assignedTo);
         return new DataResponse(array_map(fn($p) => $p->jsonSerialize(), $procs));
     }
 

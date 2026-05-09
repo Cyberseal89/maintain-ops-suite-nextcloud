@@ -19,7 +19,7 @@ class DeficiencyMapper extends QBMapper {
         return $this->findEntity($qb);
     }
 
-    public function findAll(?string $severity = null, ?string $status = null, ?int $assetId = null): array {
+    public function findAll(?string $severity = null, ?string $status = null, ?int $assetId = null, ?string $assignedTo = null): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')->from($this->getTableName());
 
@@ -36,6 +36,9 @@ class DeficiencyMapper extends QBMapper {
         }
         if ($assetId !== null) {
             $qb->andWhere($qb->expr()->eq('asset_id', $qb->createNamedParameter($assetId, IQueryBuilder::PARAM_INT)));
+        }
+        if ($assignedTo !== null) {
+            $qb->andWhere($qb->expr()->eq('assigned_to', $qb->createNamedParameter($assignedTo)));
         }
         $qb->orderBy('created_at', 'DESC');
         return $this->findEntities($qb);
