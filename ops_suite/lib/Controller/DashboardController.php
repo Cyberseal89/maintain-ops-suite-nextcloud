@@ -45,4 +45,15 @@ class DashboardController extends Controller {
             'critical_defs' => array_map(fn($d) => $d->jsonSerialize(), $criticalDefs),
         ]);
     }
+
+    /** @NoAdminRequired */
+    public function myStats(): DataResponse {
+        $user = $this->userSession->getUser();
+        $uid  = $user ? $user->getUID() : '';
+        return new DataResponse([
+            'my_open_deficiencies' => $this->deficiencyMapper->countOpenAssignedTo($uid),
+            'my_overdue_pm'        => $this->procedureMapper->countOverdueAssignedTo($uid),
+            'my_total_pm'          => $this->procedureMapper->countAssignedTo($uid),
+        ]);
+    }
 }
