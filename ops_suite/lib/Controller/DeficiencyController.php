@@ -116,6 +116,17 @@ class DeficiencyController extends Controller {
         if (array_key_exists('man_days_external', $data))        $def->setManDaysExternal((float)$data['man_days_external']);
         if (array_key_exists('scheduled_outage_hours', $data))   $def->setScheduledOutageHours((float)$data['scheduled_outage_hours']);
         if (array_key_exists('target_completion', $data))        $def->setTargetCompletion($data['target_completion'] ?: null);
+        // Closeout fields
+        if (array_key_exists('actual_parts_cost', $data))  $def->setActualPartsCost((float)$data['actual_parts_cost']);
+        if (array_key_exists('actual_labor_cost', $data))  $def->setActualLaborCost((float)$data['actual_labor_cost']);
+        if (array_key_exists('actual_man_days', $data))    $def->setActualManDays((float)$data['actual_man_days']);
+        if (array_key_exists('root_cause', $data))         $def->setRootCause($data['root_cause']);
+        if (array_key_exists('corrective_action', $data))  $def->setCorrectiveAction($data['corrective_action']);
+        // Auto-set closed_by and closed_at when closing
+        if (isset($data['status']) && $data['status'] === 'closed' && $oldStatus !== 'closed') {
+            $def->setClosedBy($uid ?: 'field');
+            $def->setClosedAt(date('Y-m-d H:i:s'));
+        }
         $def->setUpdatedAt(date('Y-m-d H:i:s'));
 
         $updated = $this->mapper->update($def);
