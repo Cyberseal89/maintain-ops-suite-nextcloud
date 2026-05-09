@@ -27,13 +27,15 @@ class DeficiencyController extends Controller {
 
     /** @NoAdminRequired */
     public function index(): DataResponse {
-        $severity = $this->request->getParam('severity');
-        $status   = $this->request->getParam('status');
-        $assetId  = $this->request->getParam('asset_id');
+        $severity   = $this->request->getParam('severity');
+        $status     = $this->request->getParam('status');
+        $assetId    = $this->request->getParam('asset_id');
+        $assignedTo = $this->request->getParam('assigned_to') ?: null;
         $defs = $this->mapper->findAll(
-            $severity ?: null,
-            $status   ?: null,
-            $assetId  ? (int)$assetId : null
+            $severity   ?: null,
+            $status     ?: null,
+            $assetId    ? (int)$assetId : null,
+            $assignedTo ?: null
         );
         return new DataResponse(array_map(fn($d) => $d->jsonSerialize(), $defs));
     }
