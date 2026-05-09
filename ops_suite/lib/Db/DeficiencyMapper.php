@@ -74,4 +74,26 @@ class DeficiencyMapper extends QBMapper {
         foreach ($rows as $row) { $out[$row['severity']] = (int)$row['cnt']; }
         return $out;
     }
+
+    public function countOpenAssignedTo(string $user): int {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select($qb->createFunction('COUNT(*) AS cnt'))->from($this->getTableName())
+           ->where($qb->expr()->eq('assigned_to', $qb->createNamedParameter($user)))
+           ->andWhere($qb->expr()->notIn('status',
+               $qb->createNamedParameter(['closed', 'cancelled'], IQueryBuilder::PARAM_STR_ARRAY)));
+        $r = $qb->executeQuery(); $row = $r->fetch(); $r->closeCursor();
+        return (int)($row['cnt'] ?? 0);
+    }
+
+    public function findOpenAssignedTo(string $user, int $limit = 10): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')->from($this->getTableName())
+           ->where($qb->expr()->eq('assigned_to', $qb->createNamedParameter($user)))
+           ->andWhere($qb->expr()->notIn('status',
+               $qb->createNamedParameter(['closed', 'cancelled'], IQueryBuilder::PARAM_STR_ARRAY)))
+           ->orderBy('severity', 'ASC')
+           ->addOrderBy('created_at', 'DESC')
+           ->setMaxResults($limit);
+        return $this->findEntities($qb);
+    }
 }

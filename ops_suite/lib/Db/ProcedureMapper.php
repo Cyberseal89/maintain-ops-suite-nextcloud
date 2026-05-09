@@ -75,4 +75,31 @@ class ProcedureMapper extends QBMapper {
            ->setMaxResults($limit);
         return $this->findEntities($qb);
     }
+
+    public function countAssignedTo(string $user): int {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select($qb->createFunction('COUNT(*) AS cnt'))->from($this->getTableName())
+           ->where($qb->expr()->eq('assigned_to', $qb->createNamedParameter($user)));
+        $r = $qb->executeQuery(); $row = $r->fetch(); $r->closeCursor();
+        return (int)($row['cnt'] ?? 0);
+    }
+
+    public function countOverdueAssignedTo(string $user): int {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select($qb->createFunction('COUNT(*) AS cnt'))->from($this->getTableName())
+           ->where($qb->expr()->eq('assigned_to', $qb->createNamedParameter($user)))
+           ->andWhere($qb->expr()->lt('next_due', $qb->createNamedParameter(date('Y-m-d'))));
+        $r = $qb->executeQuery(); $row = $r->fetch(); $r->closeCursor();
+        return (int)($row['cnt'] ?? 0);
+    }
+
+    public function findOverdueAssignedTo(string $user, int $limit = 10): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')->from($this->getTableName())
+           ->where($qb->expr()->eq('assigned_to', $qb->createNamedParameter($user)))
+           ->andWhere($qb->expr()->lt('next_due', $qb->createNamedParameter(date('Y-m-d'))))
+           ->orderBy('next_due', 'ASC')
+           ->setMaxResults($limit);
+        return $this->findEntities($qb);
+    }
 }
