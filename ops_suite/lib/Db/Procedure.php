@@ -17,6 +17,10 @@ use OCP\AppFramework\Db\Entity;
  * @method string  getDescription()              @method void setDescription(string $v)
  * @method float   getEstHours()                 @method void setEstHours(float $v)
  * @method int     getCreateDeficiencyOnFail()   @method void setCreateDeficiencyOnFail(int $v)
+ * @method float   getActualHours()                @method void setActualHours(float $v)
+ * @method float   getActualPartsCost()            @method void setActualPartsCost(float $v)
+ * @method float   getActualLaborCost()            @method void setActualLaborCost(float $v)
+ * @method string  getCompletionNotes()            @method void setCompletionNotes(string $v)
  * @method string  getCreatedBy()                @method void setCreatedBy(string $v)
  * @method string  getCreatedAt()                @method void setCreatedAt(string $v)
  * @method string  getUpdatedAt()                @method void setUpdatedAt(string $v)
@@ -33,6 +37,10 @@ class Procedure extends Entity implements \JsonSerializable {
     protected string  $description             = '';
     protected float   $estHours                = 0;
     protected int     $createDeficiencyOnFail  = 0;
+    protected float   $actualHours             = 0;
+    protected float   $actualPartsCost         = 0;
+    protected float   $actualLaborCost         = 0;
+    protected string  $completionNotes         = '';
     protected string  $createdBy               = '';
     protected string  $createdAt               = '';
     protected string  $updatedAt               = '';
@@ -61,6 +69,10 @@ class Procedure extends Entity implements \JsonSerializable {
             'description'               => $this->description,
             'est_hours'                 => $this->estHours,
             'create_deficiency_on_fail' => $this->createDeficiencyOnFail,
+            'actual_hours'              => $this->actualHours,
+            'actual_parts_cost'         => $this->actualPartsCost,
+            'actual_labor_cost'         => $this->actualLaborCost,
+            'completion_notes'          => $this->completionNotes,
             'created_by'                => $this->createdBy,
             'created_at'                => $this->createdAt,
             'updated_at'                => $this->updatedAt,

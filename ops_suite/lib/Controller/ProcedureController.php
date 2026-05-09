@@ -121,6 +121,17 @@ class ProcedureController extends Controller {
         $proc->setLastCompleted($today);
         $proc->setNextDue($this->calcNextDue($proc->getPeriodicity(), $today));
         $proc->setUpdatedAt(date('Y-m-d H:i:s'));
+
+        // Closeout details
+        $actualHours     = $this->request->getParam('actual_hours');
+        $actualPartsCost = $this->request->getParam('actual_parts_cost');
+        $actualLaborCost = $this->request->getParam('actual_labor_cost');
+        $completionNotes = $this->request->getParam('completion_notes');
+        if ($actualHours !== null)     $proc->setActualHours((float)$actualHours);
+        if ($actualPartsCost !== null) $proc->setActualPartsCost((float)$actualPartsCost);
+        if ($actualLaborCost !== null) $proc->setActualLaborCost((float)$actualLaborCost);
+        if ($completionNotes !== null) $proc->setCompletionNotes((string)$completionNotes);
+
         return new DataResponse($this->mapper->update($proc)->jsonSerialize());
     }
 
