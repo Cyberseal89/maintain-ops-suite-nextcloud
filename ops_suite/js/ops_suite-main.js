@@ -1282,6 +1282,40 @@ async function viewDefDetail(id) {
   ].forEach(row=>{ var cell=div('ops-cost-cell'); cell.appendChild(el('div',{cls:'ops-cost-label',text:row[0]})); cell.appendChild(el('div',{cls:'ops-cost-value '+row[2],text:String(row[1])})); cg.appendChild(cell); });
   cc.appendChild(cg); left.appendChild(cc);
 
+
+  // Closeout card — only show if closed
+  if (def.status === 'closed') {
+    var clCard = div('ops-card'); clCard.style.marginTop = '16px';
+    clCard.appendChild(div('ops-card-header', [el('h3', {text: '✓ Closeout Details'})]));
+    var clg = div('ops-cost-grid');
+    var actualTotal = (parseFloat(def.actual_parts_cost)||0) + (parseFloat(def.actual_labor_cost)||0);
+    [
+      ['Closed By',   def.closed_by || '—',                                          'ops-teal'],
+      ['Closed At',   def.closed_at ? fmtDT(def.closed_at) : '—',                   'ops-muted'],
+      ['Actual Parts',def.actual_parts_cost > 0 ? fmt$(def.actual_parts_cost) : '—', 'ops-blue'],
+      ['Actual Labor',def.actual_labor_cost > 0 ? fmt$(def.actual_labor_cost) : '—', 'ops-blue'],
+      ['Total Actual',actualTotal > 0 ? fmt$(actualTotal) : '—',                      'ops-warn'],
+      ['Man-Days',    def.actual_man_days > 0 ? String(def.actual_man_days) : '—',    'ops-teal'],
+    ].forEach(function(row) {
+      var cell = div('ops-cost-cell');
+      cell.appendChild(el('div', {cls:'ops-cost-label', text:row[0]}));
+      cell.appendChild(el('div', {cls:'ops-cost-value '+row[2], text:row[1]}));
+      clg.appendChild(cell);
+    });
+    clCard.appendChild(clg);
+    if (def.root_cause) {
+      var rcLbl = div('ops-section-label'); rcLbl.style.marginTop='12px'; rcLbl.textContent='Root Cause';
+      clCard.appendChild(rcLbl);
+      clCard.appendChild(el('p', {cls:'ops-notes', text:def.root_cause}));
+    }
+    if (def.corrective_action) {
+      var caLbl = div('ops-section-label'); caLbl.style.marginTop='12px'; caLbl.textContent='Corrective Action';
+      clCard.appendChild(caLbl);
+      clCard.appendChild(el('p', {cls:'ops-notes', text:def.corrective_action}));
+    }
+    left.appendChild(clCard);
+  }
+
   // Assignment card
   var ac2=div('ops-card'); ac2.style.marginTop='16px';
   ac2.appendChild(div('ops-card-header',[el('h3',{text:'Assignment'})]));
