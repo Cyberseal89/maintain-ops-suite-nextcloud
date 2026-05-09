@@ -33,7 +33,8 @@ return [
          'verb' => 'POST'],
 
         // ── Dashboard ─────────────────────────────────────────────
-        ['name' => 'dashboard#stats', 'url' => '/api/dashboard/stats', 'verb' => 'GET'],
+        ['name' => 'dashboard#stats',   'url' => '/api/dashboard/stats',   'verb' => 'GET'],
+        ['name' => 'dashboard#myStats', 'url' => '/api/dashboard/mystats', 'verb' => 'GET'],
 
         // ── Users ─────────────────────────────────────────────────
         ['name' => 'user#index', 'url' => '/api/users', 'verb' => 'GET'],
