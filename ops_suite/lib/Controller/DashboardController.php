@@ -48,15 +48,18 @@ class DashboardController extends Controller {
 
     /** @NoAdminRequired */
     public function myStats(): DataResponse {
+        // Try session first, then Basic Auth header, then uid query param
         $user = $this->userSession->getUser();
         $uid  = $user ? $user->getUID() : '';
-        // Fallback: read from Basic Auth header if session user is null
         if ($uid === '') {
             $authHeader = $this->request->getHeader('Authorization');
             if ($authHeader && str_starts_with($authHeader, 'Basic ')) {
                 $decoded = base64_decode(substr($authHeader, 6));
                 $uid = explode(':', $decoded, 2)[0];
             }
+        }
+        if ($uid === '') {
+            $uid = $this->request->getParam('uid') ?: '';
         }
         return new DataResponse([
             'uid'                  => $uid,
