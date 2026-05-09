@@ -23,6 +23,13 @@ class Deficiency extends Entity implements \JsonSerializable {
     protected float   $scheduledOutageHours   = 0;
     protected ?string $targetCompletion       = null;
     protected int     $linkedProcedureId      = 0;
+    protected float   $actualPartsCost    = 0;
+    protected float   $actualLaborCost    = 0;
+    protected float   $actualManDays      = 0;
+    protected string  $rootCause          = '';
+    protected string  $correctiveAction   = '';
+    protected string  $closedBy           = '';
+    protected ?string $closedAt           = null;
     protected string  $createdBy              = '';
     protected string  $createdAt              = '';
     protected string  $updatedAt              = '';
@@ -92,6 +99,13 @@ class Deficiency extends Entity implements \JsonSerializable {
             'scheduled_outage_hours'  => $this->scheduledOutageHours,
             'target_completion'       => $this->targetCompletion,
             'linked_procedure_id'     => $this->linkedProcedureId,
+            'actual_parts_cost'   => $this->actualPartsCost,
+            'actual_labor_cost'   => $this->actualLaborCost,
+            'actual_man_days'     => $this->actualManDays,
+            'root_cause'          => $this->rootCause,
+            'corrective_action'   => $this->correctiveAction,
+            'closed_by'           => $this->closedBy,
+            'closed_at'           => $this->closedAt,
             'created_by'              => $this->createdBy,
             'created_at'              => $this->createdAt,
             'updated_at'              => $this->updatedAt,

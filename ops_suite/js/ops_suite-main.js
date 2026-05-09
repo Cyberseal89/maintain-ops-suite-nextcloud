@@ -1177,7 +1177,7 @@ async function viewDefDetail(id) {
   stSel.onchange=async()=>{ await API.deficiencies.update(id,{status:stSel.value}); viewDefDetail(id); };
   hdr.appendChild(stSel);
   if(def.status!=='closed')
-    hdr.appendChild(btn('danger','✓ Close',async()=>{ if(confirm('Close this deficiency?')){ await API.deficiencies.update(id,{status:'closed'}); viewDefDetail(id); } }));
+    hdr.appendChild(btn('danger','✓ Close',()=>{ showCloseDeficiencyModal(def, ()=>viewDefDetail(id)); }));
   wrap.appendChild(hdr);
 
   var two=div('ops-two-col');
