@@ -980,6 +980,75 @@ function viewProcedureDetail(p, onClose) {
   document.body.appendChild(overlay);
 }
 
+/* ── Deficiency Closeout Modal ── */
+function showCloseDeficiencyModal(def, onDone) {
+  var overlay = div('ops-modal-overlay');
+  var m = div('ops-modal');
+  m.style.maxWidth = '560px';
+  m.appendChild(el('h3', {text: 'Close Deficiency: ' + def.def_id_label}));
+  m.appendChild(el('p', {cls:'ops-muted', text: def.summary}));
+
+  function field(label, placeholder, multiline) {
+    var wrap = div('ops-field');
+    wrap.appendChild(el('label', {text: label}));
+    var input;
+    if (multiline) {
+      input = document.createElement('textarea');
+      input.rows = 3;
+    } else {
+      input = document.createElement('input');
+      input.type = 'number';
+    }
+    input.placeholder = placeholder || '';
+    input.className = 'ops-input';
+    wrap.appendChild(input);
+    return { wrap, input };
+  }
+
+  var rootCause        = field('Root Cause *',              'What caused this deficiency?', true);
+  var correctiveAction = field('Corrective Action Taken *', 'What was done to resolve it?', true);
+  var partsCost        = field('Actual Parts Cost ($)',      'e.g. 45.00', false);
+  var laborCost        = field('Actual Labor Cost ($)',      'e.g. 120.00', false);
+  var manDays          = field('Actual Man-Days',            'e.g. 0.5', false);
+
+  [rootCause.wrap, correctiveAction.wrap, partsCost.wrap, laborCost.wrap, manDays.wrap]
+    .forEach(function(w) { m.appendChild(w); });
+
+  var btnRow = div('ops-btn-row');
+  var cancelBtn = btn('secondary', 'Cancel', function() { document.body.removeChild(overlay); });
+  var submitBtn = btn('danger', '✓ Close Deficiency', async function() {
+    if (!rootCause.input.value.trim()) { alert('Root cause is required.'); return; }
+    if (!correctiveAction.input.value.trim()) { alert('Corrective action is required.'); return; }
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+    try {
+      var data = {
+        status: 'closed',
+        root_cause: rootCause.input.value.trim(),
+        corrective_action: correctiveAction.input.value.trim(),
+      };
+      if (partsCost.input.value) data.actual_parts_cost = parseFloat(partsCost.input.value);
+      if (laborCost.input.value) data.actual_labor_cost = parseFloat(laborCost.input.value);
+      if (manDays.input.value)   data.actual_man_days   = parseFloat(manDays.input.value);
+      await API.deficiencies.update(def.id, data);
+      await API.deficiencies.addNote(def.id,
+        'CLOSED — Root cause: ' + data.root_cause + '. Corrective action: ' + data.corrective_action + '.');
+      document.body.removeChild(overlay);
+      onDone();
+    } catch(e) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = '✓ Close Deficiency';
+      alert('Error: ' + e.message);
+    }
+  });
+
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(submitBtn);
+  m.appendChild(btnRow);
+  overlay.appendChild(m);
+  document.body.appendChild(overlay);
+}
+
 /* ── PM Closeout Modal ── */
 function showCompleteModal(proc, onDone) {
   var overlay = div('ops-modal-overlay');
