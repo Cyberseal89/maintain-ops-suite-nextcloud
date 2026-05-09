@@ -782,6 +782,190 @@ async function viewPmDashboard() {
   wrap.appendChild(two);
 }
 
+/* ── Procedure Detail View ── */
+function viewProcedureDetail(p, onClose) {
+  var body = el('div', {});
+
+  function row(label, valueNode) {
+    var r = el('div', {style:'display:flex;gap:16px;padding:10px 0;border-bottom:1px solid #2e3650;align-items:flex-start;'});
+    var l = el('div', {style:'width:160px;flex-shrink:0;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.7px;padding-top:2px;', text:label});
+    var v = el('div', {style:'flex:1;color:#e2e8f0;font-size:13px;'});
+    if (typeof valueNode === 'string' || typeof valueNode === 'number') {
+      v.textContent = valueNode || '—';
+    } else if (valueNode) {
+      v.appendChild(valueNode);
+    } else {
+      v.textContent = '—';
+    }
+    r.appendChild(l); r.appendChild(v);
+    return r;
+  }
+
+  // Header info
+  var hdrDiv = el('div', {style:'margin-bottom:20px;'});
+  var metaDiv = el('div', {style:'display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;'});
+  metaDiv.appendChild(span('ops-muted', p.proc_id_label));
+  metaDiv.appendChild(dueBadge(p.next_due));
+  if (p.computed_status === 'overdue') metaDiv.appendChild(span('ops-badge badge-red', 'OVERDUE'));
+  hdrDiv.appendChild(metaDiv);
+  body.appendChild(hdrDiv);
+
+  // Schedule section
+  var schedHdr = el('div', {style:'font-size:12px;font-weight:700;color:#38bdf8;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;', text:'Schedule'});
+  body.appendChild(schedHdr);
+  body.appendChild(row('Periodicity',    p.periodicity || '—'));
+  body.appendChild(row('Last Completed', p.last_completed ? p.last_completed.slice(0,10) : '—'));
+  body.appendChild(row('Next Due',       p.next_due ? p.next_due.slice(0,10) : '—'));
+  body.appendChild(row('Est. Hours',     p.est_hours ? p.est_hours + 'h' : '—'));
+
+  // Assignment section
+  var assignHdr = el('div', {style:'font-size:12px;font-weight:700;color:#38bdf8;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;', text:'Assignment'});
+  body.appendChild(assignHdr);
+  body.appendChild(row('Asset',       '#' + p.asset_id));
+  body.appendChild(row('Assigned To', p.assigned_to || '—'));
+  body.appendChild(row('Category',    p.category || '—'));
+  if (p.document_ref) body.appendChild(row('SOP Document', sopLink(p.document_ref)));
+
+  // Description
+  if (p.description) {
+    var descHdr = el('div', {style:'font-size:12px;font-weight:700;color:#38bdf8;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;', text:'Description'});
+    body.appendChild(descHdr);
+    var descP = el('p', {style:'color:#94a3b8;font-size:13px;line-height:1.6;margin:0;', text:p.description});
+    body.appendChild(descP);
+  }
+
+  // Closeout section — only show if completed
+  if (p.last_completed) {
+    var closeHdr = el('div', {style:'font-size:12px;font-weight:700;color:#4ade80;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;', text:'Last Closeout'});
+    body.appendChild(closeHdr);
+    body.appendChild(row('Actual Hours',    p.actual_hours ? p.actual_hours + 'h' : '—'));
+    body.appendChild(row('Parts Cost',      p.actual_parts_cost ? '$' + Number(p.actual_parts_cost).toFixed(2) : '—'));
+    body.appendChild(row('Labor Cost',      p.actual_labor_cost ? '$' + Number(p.actual_labor_cost).toFixed(2) : '—'));
+    var totalCost = (parseFloat(p.actual_parts_cost)||0) + (parseFloat(p.actual_labor_cost)||0);
+    if (totalCost > 0) body.appendChild(row('Total Cost', '$' + totalCost.toFixed(2)));
+    body.appendChild(row('Notes',           p.completion_notes || '—'));
+  }
+
+  // Actions row
+  var actRow = el('div', {style:'display:flex;gap:10px;margin-top:24px;'});
+  var editBtn = el('button', {style:'padding:8px 18px;border-radius:8px;border:1.5px solid #3e4a65;background:#2d3548;color:#cbd5e1;font-size:13px;font-weight:600;cursor:pointer;', text:'Edit'});
+  editBtn.onclick = async () => {
+    document.querySelector('.ops-modal-overlay, [style*="z-index:999999"]')?.remove();
+    var f = await buildProcedureForm(p, null);
+    modal('Edit Procedure — ' + p.proc_id_label, f.wrap, async () => {
+      await API.procedures.update(p.id, f.collect());
+      if (onClose) onClose();
+    }, 'Save Changes');
+  };
+  var doneBtn2 = el('button', {style:'padding:8px 18px;border-radius:8px;border:1.5px solid #16803a;background:rgba(22,128,58,0.2);color:#4ade80;font-size:13px;font-weight:700;cursor:pointer;', text:'✓ Mark Complete'});
+  doneBtn2.onclick = () => {
+    document.querySelector('[style*="z-index:999999"]')?.remove();
+    showCompleteModal(p, onClose || (()=>{}));
+  };
+  actRow.appendChild(editBtn);
+  actRow.appendChild(doneBtn2);
+  body.appendChild(actRow);
+
+  modal(p.name, body, null, null);
+  // Hide the footer save button since we have our own actions
+  setTimeout(() => {
+    var footer = document.querySelector('[style*="z-index:999999"] [style*="border-top"]');
+    if (footer) footer.style.display = 'none';
+  }, 0);
+}
+
+/* ── Procedure Detail View ── */
+function viewProcedureDetail(p, onClose) {
+  var body = el('div', {});
+
+  function row(label, valueNode) {
+    var r = el('div', {style:'display:flex;gap:16px;padding:10px 0;border-bottom:1px solid #2e3650;align-items:flex-start;'});
+    var l = el('div', {style:'width:160px;flex-shrink:0;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.7px;padding-top:2px;', text:label});
+    var v = el('div', {style:'flex:1;color:#e2e8f0;font-size:13px;'});
+    if (typeof valueNode === 'string' || typeof valueNode === 'number') {
+      v.textContent = valueNode || '—';
+    } else if (valueNode) {
+      v.appendChild(valueNode);
+    } else {
+      v.textContent = '—';
+    }
+    r.appendChild(l); r.appendChild(v);
+    return r;
+  }
+
+  // Header info
+  var hdrDiv = el('div', {style:'margin-bottom:20px;'});
+  var metaDiv = el('div', {style:'display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;'});
+  metaDiv.appendChild(span('ops-muted', p.proc_id_label));
+  metaDiv.appendChild(dueBadge(p.next_due));
+  if (p.computed_status === 'overdue') metaDiv.appendChild(span('ops-badge badge-red', 'OVERDUE'));
+  hdrDiv.appendChild(metaDiv);
+  body.appendChild(hdrDiv);
+
+  // Schedule section
+  var schedHdr = el('div', {style:'font-size:12px;font-weight:700;color:#38bdf8;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;', text:'Schedule'});
+  body.appendChild(schedHdr);
+  body.appendChild(row('Periodicity',    p.periodicity || '—'));
+  body.appendChild(row('Last Completed', p.last_completed ? p.last_completed.slice(0,10) : '—'));
+  body.appendChild(row('Next Due',       p.next_due ? p.next_due.slice(0,10) : '—'));
+  body.appendChild(row('Est. Hours',     p.est_hours ? p.est_hours + 'h' : '—'));
+
+  // Assignment section
+  var assignHdr = el('div', {style:'font-size:12px;font-weight:700;color:#38bdf8;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;', text:'Assignment'});
+  body.appendChild(assignHdr);
+  body.appendChild(row('Asset',       '#' + p.asset_id));
+  body.appendChild(row('Assigned To', p.assigned_to || '—'));
+  body.appendChild(row('Category',    p.category || '—'));
+  if (p.document_ref) body.appendChild(row('SOP Document', sopLink(p.document_ref)));
+
+  // Description
+  if (p.description) {
+    var descHdr = el('div', {style:'font-size:12px;font-weight:700;color:#38bdf8;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;', text:'Description'});
+    body.appendChild(descHdr);
+    var descP = el('p', {style:'color:#94a3b8;font-size:13px;line-height:1.6;margin:0;', text:p.description});
+    body.appendChild(descP);
+  }
+
+  // Closeout section — only show if completed
+  if (p.last_completed) {
+    var closeHdr = el('div', {style:'font-size:12px;font-weight:700;color:#4ade80;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;', text:'Last Closeout'});
+    body.appendChild(closeHdr);
+    body.appendChild(row('Actual Hours',    p.actual_hours ? p.actual_hours + 'h' : '—'));
+    body.appendChild(row('Parts Cost',      p.actual_parts_cost ? '$' + Number(p.actual_parts_cost).toFixed(2) : '—'));
+    body.appendChild(row('Labor Cost',      p.actual_labor_cost ? '$' + Number(p.actual_labor_cost).toFixed(2) : '—'));
+    var totalCost = (parseFloat(p.actual_parts_cost)||0) + (parseFloat(p.actual_labor_cost)||0);
+    if (totalCost > 0) body.appendChild(row('Total Cost', '$' + totalCost.toFixed(2)));
+    body.appendChild(row('Notes',           p.completion_notes || '—'));
+  }
+
+  // Actions row
+  var actRow = el('div', {style:'display:flex;gap:10px;margin-top:24px;'});
+  var editBtn = el('button', {style:'padding:8px 18px;border-radius:8px;border:1.5px solid #3e4a65;background:#2d3548;color:#cbd5e1;font-size:13px;font-weight:600;cursor:pointer;', text:'Edit'});
+  editBtn.onclick = async () => {
+    document.querySelector('.ops-modal-overlay, [style*="z-index:999999"]')?.remove();
+    var f = await buildProcedureForm(p, null);
+    modal('Edit Procedure — ' + p.proc_id_label, f.wrap, async () => {
+      await API.procedures.update(p.id, f.collect());
+      if (onClose) onClose();
+    }, 'Save Changes');
+  };
+  var doneBtn2 = el('button', {style:'padding:8px 18px;border-radius:8px;border:1.5px solid #16803a;background:rgba(22,128,58,0.2);color:#4ade80;font-size:13px;font-weight:700;cursor:pointer;', text:'✓ Mark Complete'});
+  doneBtn2.onclick = () => {
+    document.querySelector('[style*="z-index:999999"]')?.remove();
+    showCompleteModal(p, onClose || (()=>{}));
+  };
+  actRow.appendChild(editBtn);
+  actRow.appendChild(doneBtn2);
+  body.appendChild(actRow);
+
+  modal(p.name, body, null, null);
+  // Hide the footer save button since we have our own actions
+  setTimeout(() => {
+    var footer = document.querySelector('[style*="z-index:999999"] [style*="border-top"]');
+    if (footer) footer.style.display = 'none';
+  }, 0);
+}
+
 /* ── PM Closeout Modal ── */
 function showCompleteModal(proc, onDone) {
   var overlay = div('ops-modal-overlay');
@@ -888,7 +1072,9 @@ async function viewPmProcedures() {
         var doneBtn=btn('success ops-btn-sm','✓ Done',e=>{ e.stopPropagation(); showCompleteModal(p, load); });
         var actionWrap=div(''); actionWrap.style.cssText='display:flex;gap:4px;';
         actionWrap.appendChild(editBtn); actionWrap.appendChild(doneBtn);
-        return [span('ops-muted',p.proc_id_label),el('strong',{text:p.name}),span('ops-link-chip','#'+p.asset_id),
+        var nameEl = el('strong',{text:p.name,style:'cursor:pointer;color:#38bdf8;'});
+        nameEl.onclick = e => { e.stopPropagation(); viewProcedureDetail(p, load); };
+        return [span('ops-muted',p.proc_id_label),nameEl,span('ops-link-chip','#'+p.asset_id),
           span('ops-tag',p.category),p.periodicity,span('ops-muted',fmtDate(p.last_completed)),
           dueBadge(p.next_due),p.document_ref?sopLink(p.document_ref):span('ops-muted','—'),
           p.assigned_to||'—',actionWrap];
