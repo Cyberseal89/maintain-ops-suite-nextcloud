@@ -63,6 +63,7 @@ class AssetController extends Controller {
         $asset->setWarrantyExpiry($data['warranty_expiry'] ?: null);
         $asset->setStatus($data['status'] ?? 'operational');
         $asset->setNotes($data['notes'] ?? '');
+        $asset->setPlatformId(isset($data['platform_id']) && $data['platform_id'] ? (int)$data['platform_id'] : null);
         $asset->setTags($data['tags'] ?? '');
         $asset->setLinkedAssets($data['linked_assets'] ?? '');
         $asset->setCreatedBy($uid);
@@ -96,6 +97,7 @@ class AssetController extends Controller {
         if (array_key_exists('warranty_expiry', $data)) $asset->setWarrantyExpiry($data['warranty_expiry'] ?: null);
         if (array_key_exists('status', $data))          $asset->setStatus($data['status']);
         if (array_key_exists('notes', $data))           $asset->setNotes($data['notes']);
+        if (array_key_exists('platform_id', $data))      $asset->setPlatformId($data['platform_id'] ? (int)$data['platform_id'] : null);
         if (array_key_exists('tags', $data))            $asset->setTags($data['tags']);
         if (array_key_exists('linked_assets', $data))   $asset->setLinkedAssets($data['linked_assets']);
         $asset->setUpdatedAt(date('Y-m-d H:i:s'));
