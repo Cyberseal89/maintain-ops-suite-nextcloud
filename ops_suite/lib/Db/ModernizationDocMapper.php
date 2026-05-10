@@ -9,7 +9,7 @@ use OCP\IDBConnection;
 
 class ModernizationDocMapper extends QBMapper {
     public function __construct(IDBConnection $db) {
-        parent::__construct($db, 'ops_modernization_docs', ModernizationDoc::class);
+        parent::__construct($db, 'ops_mod_docs', ModernizationDoc::class);
     }
 
     public function find(int $id): ModernizationDoc {
