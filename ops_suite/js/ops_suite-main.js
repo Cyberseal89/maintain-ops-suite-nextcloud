@@ -725,11 +725,11 @@ async function viewAssetDetail(id) {
     },'Create Procedure');
   });
   var modBtn = btn('', '🔧 Create Modernization', () => {
-    showModernizationForm({
+    showModernizationForm(null, () => navigate('modernizations'), {
       title: 'Modernization — ' + asset.name,
       asset_ids: JSON.stringify([asset.id]),
       platform_id: asset.platform_id,
-    }, () => navigate('modernizations'));
+    });
   });
   hdr.appendChild(editBtn); hdr.appendChild(logDefBtn); hdr.appendChild(addPmBtn); hdr.appendChild(modBtn);
   wrap.appendChild(hdr);
@@ -1306,14 +1306,12 @@ async function viewDefDetail(id) {
   if(def.status!=='closed')
     hdr.appendChild(btn('danger','✓ Close',()=>{ showCloseDeficiencyModal(def, ()=>viewDefDetail(id)); }));
     hdr.appendChild(btn('','🔧 Escalate to Modernization', () => {
-      showModernizationForm({
-        title: 'Modernization — ' + def.summary,
-        description: 'Initiated from deficiency ' + def.def_id_label,
-        platform_id: null,
-      }, async (modId) => {
-        // Link deficiency to modernization
+      showModernizationForm(null, async (modId) => {
         if (modId) await API.deficiencies.update(def.id, {modernization_id: modId});
         navigate('modernizations');
+      }, {
+        title: 'Modernization — ' + def.summary,
+        description: 'Initiated from deficiency ' + def.def_id_label,
       });
     }));
   wrap.appendChild(hdr);
@@ -1672,20 +1670,21 @@ async function viewModernizationDetail(id) {
   setContent(wrap);
 }
 
-function showModernizationForm(existing, onDone) {
+function showModernizationForm(existing, onDone, prefill) {
   var isEdit = !!existing;
+  var defaults = prefill || existing || {};
   var body = div('ops-form-grid');
 
   var titleInp = el('input',{}); titleInp.className='ops-input'; titleInp.placeholder='Modernization title';
-  if (existing) titleInp.value = existing.title || '';
+  titleInp.value = defaults.title || '';
   body.appendChild(fg('Title *', titleInp, true));
 
   var descInp = document.createElement('textarea'); descInp.className='ops-input'; descInp.rows=3;
   descInp.placeholder='Description of the modernization scope';
-  if (existing) descInp.value = existing.description || '';
+  descInp.value = defaults.description || '';
   body.appendChild(fg('Description', descInp, true));
 
-  var statusSel = sel(MOD_STATUSES, existing?.status || 'design');
+  var statusSel = sel(MOD_STATUSES, defaults.status || 'design');
   body.appendChild(fg('Status', statusSel));
 
   var assignInp = el('input',{}); assignInp.className='ops-input'; assignInp.placeholder='Assigned user';
@@ -1730,7 +1729,9 @@ function showModernizationForm(existing, onDone) {
       est_labor_cost:      parseFloat(estLaborInp.value) || 0,
       est_contractor_cost: parseFloat(estContractorInp.value) || 0,
     };
-    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
+    if (defaults.asset_ids) data.asset_ids = defaults.asset_ids;
+    if (defaults.platform_id) data.platform_id = defaults.platform_id;
+    else if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
     if (isEdit) {
       await API.modernizations.update(existing.id, data);
       if (onDone) onDone(existing.id);
