@@ -456,6 +456,9 @@ async function buildAssetForm(data) {
   linkedWrap.appendChild(linkedPicker);
   wrap.appendChild(linkedWrap);
 
+  f.uii      = add('UII (ISO 15459)', inp('Unique Item Identifier', data.uii||''));
+  f.cageCode = add('CAGE Code', inp('5-character CAGE code', data.cage_code||''));
+  f.iuid     = add('IUID Compliant', sel([['0','No'],['1','Yes']], String(data.iuid_compliant ? '1' : '0')));
   f.tags  = add('Tags', inp('Comma-separated tags', data.tags||''), true);
   f.notes = add('Notes', ta('Technical details, configuration notes…', data.notes||'',3), true);
 
@@ -467,7 +470,9 @@ async function buildAssetForm(data) {
     status:f.status.value, linked_assets:linkedPicker.getValue(),
     tags:f.tags.value, notes:f.notes.value,
     platform_id: f.platform.value ? parseInt(f.platform.value) : null,
-    // allow name edit too
+    uii: f.uii.value,
+    cage_code: f.cageCode.value,
+    iuid_compliant: parseInt(f.iuid.value),
     name:f.name.value,
   });
   f.wrap = wrap;
@@ -769,7 +774,12 @@ async function viewAssetDetail(id) {
       platform_id: asset.platform_id,
     });
   });
-  hdr.appendChild(editBtn); hdr.appendChild(logDefBtn); hdr.appendChild(addPmBtn); hdr.appendChild(modBtn);
+  var verifyBtn = btn('success', '✓ Verify Asset', async () => {
+    if (!confirm('Mark this asset as verified today?')) return;
+    await API.assets.update(id, {verify: 1});
+    viewAssetDetail(id);
+  });
+  hdr.appendChild(editBtn); hdr.appendChild(logDefBtn); hdr.appendChild(addPmBtn); hdr.appendChild(modBtn); hdr.appendChild(verifyBtn);
   wrap.appendChild(hdr);
 
   var two=div('ops-two-col');
@@ -1821,6 +1831,138 @@ function showDocForm(modId, existing, onDone) {
   }, isEdit ? 'Save Changes' : 'Add Document');
 }
 
+/* ── Validations Due ── */
+const COUNT_CLASS_INTERVALS = {'A-daily':1,'A-weekly':7,'B':30,'C':90,'full':365};
+const COUNT_CLASS_LABELS = {'A-daily':'A (Daily)','A-weekly':'A (Weekly)','B':'B (Monthly)','C':'C (Quarterly)','full':'Annual'};
+
+async function viewValidationsDue() {
+  var wrap = div(''); setContent(wrap);
+  var hdr = div('ops-page-header', [el('h2', {text: '✅ Validations Due'})]);
+  hdr.appendChild(btn('', '🖨 Print', () => window.print()));
+  wrap.appendChild(hdr);
+
+  var today = new Date();
+  var weekEnd = new Date(today); weekEnd.setDate(today.getDate() + 7);
+
+  var p = {};
+  if (_selectedPlatformIds.length) p.platform_ids = _selectedPlatformIds.join(',');
+
+  var [assets, invItems] = await Promise.all([
+    API.assets.list(p).catch(() => []),
+    API.supply.inventory.list(p).catch(() => [])
+  ]);
+
+  // Assets overdue or due within 18 months window
+  var ASSET_INTERVAL_DAYS = 548; // 18 months
+  var assetsDue = assets.filter(a => {
+    if (!a.last_verified_at) return true; // never verified
+    var lastV = new Date(a.last_verified_at);
+    var nextDue = new Date(lastV);
+    nextDue.setDate(nextDue.getDate() + ASSET_INTERVAL_DAYS);
+    return nextDue <= weekEnd;
+  }).map(a => {
+    var lastV = a.last_verified_at ? new Date(a.last_verified_at) : null;
+    var nextDue = lastV ? new Date(lastV.getTime() + ASSET_INTERVAL_DAYS * 86400000) : null;
+    var overdue = nextDue ? nextDue < today : true;
+    return { ...a, next_due: nextDue, overdue };
+  });
+
+  // Inventory items due for cycle count this week
+  var invDue = invItems.filter(i => {
+    if (!i.next_count_due) return true; // never counted
+    return new Date(i.next_count_due) <= weekEnd;
+  }).map(i => ({
+    ...i,
+    overdue: i.next_count_due ? new Date(i.next_count_due) < today : true
+  }));
+
+  // Asset verifications section
+  var assetCard = div('ops-card');
+  assetCard.style.marginBottom = '16px';
+  var assetHdr = div('ops-card-header');
+  assetHdr.appendChild(el('h3', {text: '🏷 Asset Verifications Due (' + assetsDue.length + ')'}));
+  assetCard.appendChild(assetHdr);
+
+  if (!assetsDue.length) {
+    assetCard.appendChild(el('p', {cls:'ops-empty', text:'No asset verifications due this week.'}));
+  } else {
+    assetCard.appendChild(makeTable(
+      ['Asset ID', 'Name', 'Type', 'Location', 'Last Verified', 'Next Due', 'Verified By', 'Status', ''],
+      assetsDue.map(a => {
+        var statusB = a.overdue
+          ? span('ops-badge badge-red', 'OVERDUE')
+          : span('ops-badge badge-orange', 'DUE SOON');
+        var verifyBtn2 = btn('success ops-btn-sm', '✓ Verify', async () => {
+          await API.assets.update(a.id, {verify: 1});
+          viewValidationsDue();
+        });
+        return [
+          span('ops-mono', a.asset_id_label || '#'+a.id),
+          el('strong', {text: a.name}),
+          span('ops-badge badge-gray', a.asset_type || '—'),
+          a.location || span('ops-muted','—'),
+          a.last_verified_at ? a.last_verified_at.slice(0,10) : span('ops-danger','Never'),
+          a.next_due ? a.next_due.toISOString().slice(0,10) : span('ops-danger','Overdue'),
+          a.verified_by || span('ops-muted','—'),
+          statusB,
+          verifyBtn2
+        ];
+      })
+    ));
+  }
+  wrap.appendChild(assetCard);
+
+  // Inventory cycle counts section
+  var invCard = div('ops-card');
+  var invHdr2 = div('ops-card-header');
+  invHdr2.appendChild(el('h3', {text: '🗄 Inventory Cycle Counts Due (' + invDue.length + ')'}));
+  invCard.appendChild(invHdr2);
+
+  if (!invDue.length) {
+    invCard.appendChild(el('p', {cls:'ops-empty', text:'No inventory cycle counts due this week.'}));
+  } else {
+    invCard.appendChild(makeTable(
+      ['Item Name', 'Part #', 'Class', 'Location', 'On Hand', 'Last Counted', 'Next Due', 'Status', ''],
+      invDue.map(i => {
+        var statusB = i.overdue
+          ? span('ops-badge badge-red', 'OVERDUE')
+          : span('ops-badge badge-orange', 'DUE SOON');
+        var countBtn = btn('primary ops-btn-sm', '✓ Count', async () => {
+          var qty = prompt('Enter physical count quantity for: ' + i.item_name);
+          if (qty === null) return;
+          await API.supply.inventory.transact(i.id, {
+            transaction_type: 'adjust',
+            quantity: parseFloat(qty) || 0,
+            notes: 'Cycle count — ' + COUNT_CLASS_LABELS[i.count_class] || i.count_class,
+          });
+          await API.supply.inventory.update(i.id, {
+            count_class: i.count_class,
+            cycle_count: 1,
+          });
+          viewValidationsDue();
+        });
+        return [
+          el('strong', {text: i.item_name}),
+          i.part_number ? span('ops-mono ops-small', i.part_number) : span('ops-muted','—'),
+          span('ops-badge badge-blue', COUNT_CLASS_LABELS[i.count_class] || i.count_class),
+          i.location || span('ops-muted','—'),
+          String(i.quantity_on_hand),
+          i.last_counted_at ? i.last_counted_at.slice(0,10) : span('ops-danger','Never'),
+          i.next_count_due ? i.next_count_due.slice(0,10) : span('ops-danger','Overdue'),
+          statusB,
+          countBtn
+        ];
+      })
+    ));
+  }
+  wrap.appendChild(invCard);
+
+  // Print styles
+  var style = document.createElement('style');
+  style.textContent = '@media print { .ops-sidebar, .ops-topbar, button { display:none!important; } }';
+  document.head.appendChild(style);
+}
+
 /* ── Supply / Warehouse ── */
 const SR_STATUSES = [
   ['draft','Draft'],['submitted','Submitted'],['approved','Approved'],
@@ -2331,6 +2473,15 @@ function showInventoryForm(existing, onDone) {
   if (existing) leadInp.value = existing.lead_time_days || '';
   body.appendChild(fg('Lead Time (days)', leadInp));
 
+  var classSel = sel([
+    ['A-daily','A — Daily (High value/fast moving)'],
+    ['A-weekly','A — Weekly (High value/fast moving)'],
+    ['B','B — Monthly (Mid tier)'],
+    ['C','C — Quarterly (Low volume/slow moving)'],
+    ['full','Full — Annual']
+  ], existing?.count_class || 'C');
+  body.appendChild(fg('Cycle Count Class', classSel));
+
   modal(isEdit ? 'Edit Inventory Item' : 'Add Inventory Item', body, async () => {
     if (!nameInp.value.trim()) throw new Error('Item name is required.');
     var data = {
@@ -2345,6 +2496,7 @@ function showInventoryForm(existing, onDone) {
       lead_time_days: parseInt(leadInp.value) || 0,
     };
     if (!isEdit) data.quantity_on_hand = parseFloat(qtyInp.value) || 0;
+    data.count_class = classSel.value;
     if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
     if (isEdit) await API.supply.inventory.update(existing.id, data);
     else await API.supply.inventory.create(data);
@@ -2393,6 +2545,138 @@ async function viewInventoryDetail(id) {
   if (!item) return;
   // For now navigate back to inventory — detail view TBD
   navigate('inventory');
+}
+
+/* ── Validations Due ── */
+const COUNT_CLASS_INTERVALS = {'A-daily':1,'A-weekly':7,'B':30,'C':90,'full':365};
+const COUNT_CLASS_LABELS = {'A-daily':'A (Daily)','A-weekly':'A (Weekly)','B':'B (Monthly)','C':'C (Quarterly)','full':'Annual'};
+
+async function viewValidationsDue() {
+  var wrap = div(''); setContent(wrap);
+  var hdr = div('ops-page-header', [el('h2', {text: '✅ Validations Due'})]);
+  hdr.appendChild(btn('', '🖨 Print', () => window.print()));
+  wrap.appendChild(hdr);
+
+  var today = new Date();
+  var weekEnd = new Date(today); weekEnd.setDate(today.getDate() + 7);
+
+  var p = {};
+  if (_selectedPlatformIds.length) p.platform_ids = _selectedPlatformIds.join(',');
+
+  var [assets, invItems] = await Promise.all([
+    API.assets.list(p).catch(() => []),
+    API.supply.inventory.list(p).catch(() => [])
+  ]);
+
+  // Assets overdue or due within 18 months window
+  var ASSET_INTERVAL_DAYS = 548; // 18 months
+  var assetsDue = assets.filter(a => {
+    if (!a.last_verified_at) return true; // never verified
+    var lastV = new Date(a.last_verified_at);
+    var nextDue = new Date(lastV);
+    nextDue.setDate(nextDue.getDate() + ASSET_INTERVAL_DAYS);
+    return nextDue <= weekEnd;
+  }).map(a => {
+    var lastV = a.last_verified_at ? new Date(a.last_verified_at) : null;
+    var nextDue = lastV ? new Date(lastV.getTime() + ASSET_INTERVAL_DAYS * 86400000) : null;
+    var overdue = nextDue ? nextDue < today : true;
+    return { ...a, next_due: nextDue, overdue };
+  });
+
+  // Inventory items due for cycle count this week
+  var invDue = invItems.filter(i => {
+    if (!i.next_count_due) return true; // never counted
+    return new Date(i.next_count_due) <= weekEnd;
+  }).map(i => ({
+    ...i,
+    overdue: i.next_count_due ? new Date(i.next_count_due) < today : true
+  }));
+
+  // Asset verifications section
+  var assetCard = div('ops-card');
+  assetCard.style.marginBottom = '16px';
+  var assetHdr = div('ops-card-header');
+  assetHdr.appendChild(el('h3', {text: '🏷 Asset Verifications Due (' + assetsDue.length + ')'}));
+  assetCard.appendChild(assetHdr);
+
+  if (!assetsDue.length) {
+    assetCard.appendChild(el('p', {cls:'ops-empty', text:'No asset verifications due this week.'}));
+  } else {
+    assetCard.appendChild(makeTable(
+      ['Asset ID', 'Name', 'Type', 'Location', 'Last Verified', 'Next Due', 'Verified By', 'Status', ''],
+      assetsDue.map(a => {
+        var statusB = a.overdue
+          ? span('ops-badge badge-red', 'OVERDUE')
+          : span('ops-badge badge-orange', 'DUE SOON');
+        var verifyBtn2 = btn('success ops-btn-sm', '✓ Verify', async () => {
+          await API.assets.update(a.id, {verify: 1});
+          viewValidationsDue();
+        });
+        return [
+          span('ops-mono', a.asset_id_label || '#'+a.id),
+          el('strong', {text: a.name}),
+          span('ops-badge badge-gray', a.asset_type || '—'),
+          a.location || span('ops-muted','—'),
+          a.last_verified_at ? a.last_verified_at.slice(0,10) : span('ops-danger','Never'),
+          a.next_due ? a.next_due.toISOString().slice(0,10) : span('ops-danger','Overdue'),
+          a.verified_by || span('ops-muted','—'),
+          statusB,
+          verifyBtn2
+        ];
+      })
+    ));
+  }
+  wrap.appendChild(assetCard);
+
+  // Inventory cycle counts section
+  var invCard = div('ops-card');
+  var invHdr2 = div('ops-card-header');
+  invHdr2.appendChild(el('h3', {text: '🗄 Inventory Cycle Counts Due (' + invDue.length + ')'}));
+  invCard.appendChild(invHdr2);
+
+  if (!invDue.length) {
+    invCard.appendChild(el('p', {cls:'ops-empty', text:'No inventory cycle counts due this week.'}));
+  } else {
+    invCard.appendChild(makeTable(
+      ['Item Name', 'Part #', 'Class', 'Location', 'On Hand', 'Last Counted', 'Next Due', 'Status', ''],
+      invDue.map(i => {
+        var statusB = i.overdue
+          ? span('ops-badge badge-red', 'OVERDUE')
+          : span('ops-badge badge-orange', 'DUE SOON');
+        var countBtn = btn('primary ops-btn-sm', '✓ Count', async () => {
+          var qty = prompt('Enter physical count quantity for: ' + i.item_name);
+          if (qty === null) return;
+          await API.supply.inventory.transact(i.id, {
+            transaction_type: 'adjust',
+            quantity: parseFloat(qty) || 0,
+            notes: 'Cycle count — ' + COUNT_CLASS_LABELS[i.count_class] || i.count_class,
+          });
+          await API.supply.inventory.update(i.id, {
+            count_class: i.count_class,
+            cycle_count: 1,
+          });
+          viewValidationsDue();
+        });
+        return [
+          el('strong', {text: i.item_name}),
+          i.part_number ? span('ops-mono ops-small', i.part_number) : span('ops-muted','—'),
+          span('ops-badge badge-blue', COUNT_CLASS_LABELS[i.count_class] || i.count_class),
+          i.location || span('ops-muted','—'),
+          String(i.quantity_on_hand),
+          i.last_counted_at ? i.last_counted_at.slice(0,10) : span('ops-danger','Never'),
+          i.next_count_due ? i.next_count_due.slice(0,10) : span('ops-danger','Overdue'),
+          statusB,
+          countBtn
+        ];
+      })
+    ));
+  }
+  wrap.appendChild(invCard);
+
+  // Print styles
+  var style = document.createElement('style');
+  style.textContent = '@media print { .ops-sidebar, .ops-topbar, button { display:none!important; } }';
+  document.head.appendChild(style);
 }
 
 /* ── Supply / Warehouse ── */
@@ -2893,6 +3177,15 @@ function showInventoryForm(existing, onDone) {
   if (existing) leadInp.value = existing.lead_time_days || '';
   body.appendChild(fg('Lead Time (days)', leadInp));
 
+  var classSel = sel([
+    ['A-daily','A — Daily (High value/fast moving)'],
+    ['A-weekly','A — Weekly (High value/fast moving)'],
+    ['B','B — Monthly (Mid tier)'],
+    ['C','C — Quarterly (Low volume/slow moving)'],
+    ['full','Full — Annual']
+  ], existing?.count_class || 'C');
+  body.appendChild(fg('Cycle Count Class', classSel));
+
   modal(isEdit ? 'Edit Inventory Item' : 'Add Inventory Item', body, async () => {
     if (!nameInp.value.trim()) throw new Error('Item name is required.');
     var data = {
@@ -2907,6 +3200,7 @@ function showInventoryForm(existing, onDone) {
       lead_time_days: parseInt(leadInp.value) || 0,
     };
     if (!isEdit) data.quantity_on_hand = parseFloat(qtyInp.value) || 0;
+    data.count_class = classSel.value;
     if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
     if (isEdit) await API.supply.inventory.update(existing.id, data);
     else await API.supply.inventory.create(data);
@@ -3966,6 +4260,7 @@ function buildSidebar() {
     {label:'Avail Projects',   route:'avail-projects',  icon:'📅', section:'Modernization'},
     {label:'Work Packages',    route:'work-packages',   icon:'📦', section:'Modernization'},
     {label:'Supply Requests', route:'supply-requests', icon:'🛒', section:'Supply'},
+    {label:'Validations Due',  route:'validations-due',  icon:'✅', section:'Supply'},
     {label:'Inventory',        route:'inventory',       icon:'🗄', section:'Supply'},
     {label:'Settings',         route:'settings',        icon:'⚙', section:'Admin'},
     {label:'User Manual',      route:'manual',        icon:'📖', section:'Admin'},
@@ -3996,6 +4291,7 @@ async function dispatch(route, param) {
     if      (route==='dashboard')     await viewDashboard();
     else if (route==='assets')        await viewAssets();
     else if (route==='asset-detail')  await viewAssetDetail(parseInt(param));
+    else if (route==='validations-due')  await viewValidationsDue();
     else if (route==='pm-dashboard')  await viewPmDashboard();
     else if (route==='pm-procedures') await viewPmProcedures();
     else if (route==='deficiencies')  await viewDeficiencies();

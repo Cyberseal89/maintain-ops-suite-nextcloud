@@ -16,6 +16,10 @@ class InventoryItem extends Entity implements \JsonSerializable {
     protected string  $location         = '';
     protected string  $vendor           = '';
     protected int     $leadTimeDays     = 0;
+    protected string  $countClass       = 'C';
+    protected string  $lastCountedAt    = '';
+    protected string  $countedBy        = '';
+    protected string  $nextCountDue     = '';
     protected string  $createdBy        = '';
     protected string  $createdAt        = '';
     protected string  $updatedAt        = '';
@@ -38,6 +42,10 @@ class InventoryItem extends Entity implements \JsonSerializable {
             'location'          => $this->location,
             'vendor'            => $this->vendor,
             'lead_time_days'    => $this->leadTimeDays,
+            'count_class'       => $this->countClass,
+            'last_counted_at'   => $this->lastCountedAt ?: null,
+            'counted_by'        => $this->countedBy,
+            'next_count_due'    => $this->nextCountDue ?: null,
             'created_by'        => $this->createdBy,
             'created_at'        => $this->createdAt,
             'updated_at'        => $this->updatedAt,

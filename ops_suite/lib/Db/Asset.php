@@ -42,6 +42,11 @@ class Asset extends Entity implements \JsonSerializable {
     protected string  $linkedAssets   = '';
     protected string  $createdBy      = '';
     protected string  $createdAt      = '';
+    protected string  $lastVerifiedAt  = '';
+    protected string  $verifiedBy      = '';
+    protected string  $uii             = '';
+    protected int     $iuidCompliant   = 0;
+    protected string  $cageCode        = '';
     protected string  $updatedAt      = '';
     protected ?int     $platformId     = null;
 
