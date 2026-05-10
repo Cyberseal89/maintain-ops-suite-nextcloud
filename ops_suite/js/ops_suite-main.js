@@ -2069,8 +2069,7 @@ function showAssetVerifyModal(asset, onDone) {
       location:      locInp.value.trim(),
       status:        statusSel.value,
       serial_number: serialInp.value.trim(),
-      notes:         asset.notes ? asset.notes + '
-[Verified] ' + notesInp.value.trim() : notesInp.value.trim(),
+      notes:         asset.notes ? asset.notes + ' [Verified] ' + notesInp.value.trim() : notesInp.value.trim(),
     });
     if (onDone) onDone();
   }, '✓ Confirm Verification');
