@@ -46,6 +46,16 @@ return [
         ['name' => 'settings#get',  'url' => '/api/settings', 'verb' => 'GET'],
         ['name' => 'settings#save', 'url' => '/api/settings', 'verb' => 'POST'],
 
+        // ── Modernizations ────────────────────────────────────────
+        ['name' => 'modernization#index',     'url' => '/api/modernizations',                      'verb' => 'GET'],
+        ['name' => 'modernization#show',      'url' => '/api/modernizations/{id}',                 'verb' => 'GET'],
+        ['name' => 'modernization#create',    'url' => '/api/modernizations',                      'verb' => 'POST'],
+        ['name' => 'modernization#update',    'url' => '/api/modernizations/{id}',                 'verb' => 'PUT'],
+        ['name' => 'modernization#destroy',   'url' => '/api/modernizations/{id}',                 'verb' => 'DELETE'],
+        ['name' => 'modernization#getDocs',   'url' => '/api/modernizations/{id}/docs',            'verb' => 'GET'],
+        ['name' => 'modernization#addDoc',    'url' => '/api/modernizations/{id}/docs',            'verb' => 'POST'],
+        ['name' => 'modernization#updateDoc', 'url' => '/api/modernizations/{id}/docs/{docId}',    'verb' => 'PUT'],
+        ['name' => 'modernization#deleteDoc', 'url' => '/api/modernizations/{id}/docs/{docId}',    'verb' => 'DELETE'],
         // ── Platforms ─────────────────────────────────────────────
         ['name' => 'platform#index',      'url' => '/api/platforms',              'verb' => 'GET'],
         ['name' => 'platform#myPlatforms','url' => '/api/platforms/mine',         'verb' => 'GET'],

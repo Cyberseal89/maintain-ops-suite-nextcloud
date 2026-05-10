@@ -31,6 +31,8 @@ class Deficiency extends Entity implements \JsonSerializable {
     protected string  $closedBy           = '';
     protected ?string $closedAt           = null;
     protected ?int     $platformId         = null;
+    protected ?int     $modernizationId             = null;
+    protected int      $deferredFromModernization   = 0;
     protected string  $createdBy              = '';
     protected string  $createdAt              = '';
     protected string  $updatedAt              = '';
@@ -108,6 +110,8 @@ class Deficiency extends Entity implements \JsonSerializable {
             'closed_by'           => $this->closedBy,
             'closed_at'           => $this->closedAt,
             'platform_id'         => $this->platformId,
+            'modernization_id'           => $this->modernizationId,
+            'deferred_from_modernization' => $this->deferredFromModernization,
             'created_by'              => $this->createdBy,
             'created_at'              => $this->createdAt,
             'updated_at'              => $this->updatedAt,
