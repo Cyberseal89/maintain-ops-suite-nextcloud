@@ -96,7 +96,7 @@ class ProcedureMapper extends QBMapper {
     /** @return Procedure[] */
     public function findOverdue(int $limit = 10, array $platformIds = []): array {
         $qb = $this->db->getQueryBuilder();
-        $qb->select($this->getTableName().'.*')->from($this->getTableName())
+        $qb->select('*')->from($this->getTableName())
            ->where($qb->expr()->lt('next_due', $qb->createNamedParameter(date('Y-m-d'))))
            ->orderBy('next_due', 'ASC')
            ->setMaxResults($limit);
