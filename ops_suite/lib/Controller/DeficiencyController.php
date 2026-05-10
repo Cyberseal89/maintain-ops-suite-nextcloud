@@ -129,6 +129,8 @@ class DeficiencyController extends Controller {
         if (array_key_exists('root_cause', $data))         $def->setRootCause($data['root_cause']);
         if (array_key_exists('corrective_action', $data))  $def->setCorrectiveAction($data['corrective_action']);
         // Auto-set closed_by and closed_at when closing
+        if (array_key_exists('modernization_id', $data))  $def->setModernizationId($data['modernization_id'] ? (int)$data['modernization_id'] : null);
+        if (array_key_exists('deferred_from_modernization', $data)) $def->setDeferredFromModernization((int)$data['deferred_from_modernization']);
         if (isset($data['status']) && $data['status'] === 'closed' && $oldStatus !== 'closed') {
             $def->setClosedBy($uid ?: 'field');
             $def->setClosedAt(date('Y-m-d H:i:s'));
