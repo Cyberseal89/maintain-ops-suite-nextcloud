@@ -31,6 +31,7 @@ class DeficiencyController extends Controller {
         $status     = $this->request->getParam('status');
         $assetId    = $this->request->getParam('asset_id');
         $assignedTo = $this->request->getParam('assigned_to') ?: null;
+        $modernizationId = $this->request->getParam('modernization_id') ? (int)$this->request->getParam('modernization_id') : null;
         $platformParam = $this->request->getParam('platform_ids', '');
         $platformIds = $platformParam ? array_map('intval', explode(',', $platformParam)) : [];
         $defs = $this->mapper->findAll(
@@ -38,7 +39,8 @@ class DeficiencyController extends Controller {
             $status     ?: null,
             $assetId    ? (int)$assetId : null,
             $assignedTo ?: null,
-            $platformIds
+            $platformIds,
+            $modernizationId
         );
         return new DataResponse(array_map(fn($d) => $d->jsonSerialize(), $defs));
     }

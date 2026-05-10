@@ -67,6 +67,17 @@ var API = {
                   groups:     ()      => req('GET',  '/api/groups') },
   settings:     { get:        ()      => req('GET',  '/api/settings'),
                   save:       d       => req('POST', '/api/settings', d) },
+  modernizations: {
+                  list:      p       => req('GET',    '/api/modernizations'+qs(p)),
+                  get:       id      => req('GET',    '/api/modernizations/'+id),
+                  create:    d       => req('POST',   '/api/modernizations', d),
+                  update:    (id,d)  => req('PUT',    '/api/modernizations/'+id, d),
+                  destroy:   id      => req('DELETE', '/api/modernizations/'+id),
+                  getDocs:   id      => req('GET',    '/api/modernizations/'+id+'/docs'),
+                  addDoc:    (id,d)  => req('POST',   '/api/modernizations/'+id+'/docs', d),
+                  updateDoc: (id,did,d) => req('PUT', '/api/modernizations/'+id+'/docs/'+did, d),
+                  deleteDoc: (id,did)   => req('DELETE','/api/modernizations/'+id+'/docs/'+did),
+                },
   platforms:    { list:       ()      => req('GET',  '/api/platforms'),
                   mine:       uid     => req('GET',  '/api/platforms/mine' + (uid ? '?uid='+uid : '')),
                   get:        id      => req('GET',  '/api/platforms/'+id),
@@ -1452,6 +1463,304 @@ async function viewPlatforms() {
     })
   ));
   wrap.appendChild(card);
+}
+
+/* ── Modernizations ── */
+const MOD_STATUSES = [
+  ['design','Design'],['planning','Planning'],['approval','Approval'],
+  ['execution','Execution'],['complete','Complete']
+];
+const MOD_DOC_TYPES = [
+  ['drawing','Drawings'],['tech_manual','Tech Manuals'],['test_plan','Test Plan'],
+  ['training','Training'],['sop','SOPs'],['other','Other']
+];
+const STATUS_COLORS_MOD = {
+  design:'badge-gray', planning:'badge-blue', approval:'badge-orange',
+  execution:'badge-teal', complete:'badge-green'
+};
+
+async function viewModernizations() {
+  var wrap = div(''); setContent(wrap);
+  var hdr = div('ops-page-header', [el('h2', {text: '🔧 Modernizations'})]);
+  var newBtn = btn('primary', '+ New Modernization', () => showModernizationForm(null, () => viewModernizations()));
+  hdr.appendChild(newBtn);
+  wrap.appendChild(hdr);
+
+  var loading = span('ops-muted', 'Loading…'); wrap.appendChild(loading);
+  var p = {};
+  if (_selectedPlatformIds.length) p.platform_ids = _selectedPlatformIds.join(',');
+  var mods = await API.modernizations.list(p).catch(e => []);
+  loading.remove();
+
+  if (!mods.length) {
+    wrap.appendChild(el('p', {cls:'ops-empty', text:'No modernizations yet. Create one to get started.'}));
+    return;
+  }
+
+  var card = div('ops-card');
+  card.appendChild(makeTable(
+    ['Title', 'Status', 'Platform', 'Target', 'Assigned', 'Est. Total', ''],
+    mods.map(m => {
+      var statusBadge2 = span('ops-badge ' + (STATUS_COLORS_MOD[m.status]||'badge-gray'),
+        MOD_STATUSES.find(s=>s[0]===m.status)?.[1] || m.status);
+      var editBtn = btn('ops-btn-sm', '✏', () => showModernizationForm(m, () => viewModernizations()));
+      var viewBtn = btn('ops-btn-sm', '👁 View', () => viewModernizationDetail(m.id));
+      var actWrap = div(''); actWrap.style.cssText = 'display:flex;gap:4px;';
+      actWrap.appendChild(viewBtn); actWrap.appendChild(editBtn);
+      var titleEl = el('strong', {text: m.title, style:'cursor:pointer;color:#38bdf8;'});
+      titleEl.onclick = () => viewModernizationDetail(m.id);
+      return [
+        titleEl,
+        statusBadge2,
+        m.platform_id ? span('ops-tag', 'Platform #'+m.platform_id) : span('ops-muted','—'),
+        m.target_completion ? span('', m.target_completion.slice(0,10)) : span('ops-muted','—'),
+        m.assigned_to || span('ops-muted','—'),
+        m.est_total > 0 ? fmt$(m.est_total) : span('ops-muted','—'),
+        actWrap
+      ];
+    })
+  ));
+  wrap.appendChild(card);
+}
+
+async function viewModernizationDetail(id) {
+  setContent(el('div', {cls:'ops-empty', text:'Loading…'}));
+  var mod = await API.modernizations.get(id).catch(e => null);
+  if (!mod) return;
+
+  var wrap = div('');
+  var hdr = div('ops-page-header');
+  hdr.appendChild(btn('', '← Modernizations', () => navigate('modernizations')));
+  hdr.appendChild(el('h2', {text: mod.title}));
+  hdr.appendChild(span('ops-badge '+(STATUS_COLORS_MOD[mod.status]||'badge-gray'),
+    MOD_STATUSES.find(s=>s[0]===mod.status)?.[1]||mod.status));
+
+  // Status workflow buttons
+  var nextStatus = {design:'planning', planning:'approval', approval:'execution', execution:'complete'};
+  if (nextStatus[mod.status]) {
+    var advBtn = btn('primary', '→ Advance to ' + (MOD_STATUSES.find(s=>s[0]===nextStatus[mod.status])?.[1]||''), async () => {
+      await API.modernizations.update(mod.id, {status: nextStatus[mod.status]});
+      viewModernizationDetail(id);
+    });
+    hdr.appendChild(advBtn);
+  }
+  hdr.appendChild(btn('', '✏ Edit', () => showModernizationForm(mod, () => viewModernizationDetail(id))));
+  wrap.appendChild(hdr);
+
+  var two = div('ops-two-col');
+  var left = div('');
+
+  // Details card
+  var dc = div('ops-card');
+  dc.appendChild(div('ops-card-header', [el('h3', {text:'Details'})]));
+  var kg = div('ops-kv-grid');
+  [
+    ['Description', mod.description || '—'],
+    ['Assigned To', mod.assigned_to || '—'],
+    ['Approver',    mod.approver || '—'],
+    ['Start Date',  mod.start_date ? mod.start_date.slice(0,10) : '—'],
+    ['Target',      mod.target_completion ? mod.target_completion.slice(0,10) : '—'],
+  ].forEach(([k,v]) => {
+    var kv = div('ops-kv');
+    kv.appendChild(span('ops-kv-key', k));
+    kv.appendChild(typeof v === 'string' ? span('', v) : v);
+    kg.appendChild(kv);
+  });
+  dc.appendChild(kg);
+  left.appendChild(dc);
+
+  // Cost card
+  var cc = div('ops-card'); cc.style.marginTop = '16px';
+  cc.appendChild(div('ops-card-header', [el('h3', {text:'Cost Summary'})]));
+  var cg = div('ops-cost-grid');
+  [
+    ['Est. Parts',       fmt$(mod.est_parts_cost),       'ops-blue'],
+    ['Est. Labor',       fmt$(mod.est_labor_cost),       'ops-blue'],
+    ['Est. Contractor',  fmt$(mod.est_contractor_cost),  'ops-blue'],
+    ['Est. Total',       fmt$(mod.est_total),            'ops-warn'],
+    ['Act. Parts',       fmt$(mod.actual_parts_cost),    'ops-teal'],
+    ['Act. Labor',       fmt$(mod.actual_labor_cost),    'ops-teal'],
+    ['Act. Contractor',  fmt$(mod.actual_contractor_cost),'ops-teal'],
+    ['Act. Total',       fmt$(mod.actual_total),         'ops-green'],
+  ].forEach(([l,v,c]) => {
+    var cell = div('ops-cost-cell');
+    cell.appendChild(el('div', {cls:'ops-cost-label', text:l}));
+    cell.appendChild(el('div', {cls:'ops-cost-value '+c, text:String(v)}));
+    cg.appendChild(cell);
+  });
+  cc.appendChild(cg);
+  left.appendChild(cc);
+  two.appendChild(left);
+
+  // TDP Docs card
+  var right = div('');
+  var docsCard = div('ops-card ops-detail-card');
+  docsCard.appendChild(div('ops-card-header', [
+    el('h3', {text:'Technical Data Package'}),
+    btn('primary ops-btn-sm', '+ Add Doc', () => showDocForm(mod.id, null, () => viewModernizationDetail(id)))
+  ]));
+
+  var docs = mod.docs || [];
+  if (!docs.length) {
+    docsCard.appendChild(el('p', {cls:'ops-empty', text:'No documents yet.'}));
+  } else {
+    MOD_DOC_TYPES.forEach(([type, label]) => {
+      var typeDocs = docs.filter(d => d.doc_type === type);
+      if (!typeDocs.length) return;
+      var typeHdr = div('ops-section-label'); typeHdr.textContent = label;
+      typeHdr.style.marginTop = '12px';
+      docsCard.appendChild(typeHdr);
+      typeDocs.forEach(doc => {
+        var row = div(''); row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #2e3650;';
+        var titleSpan = el('span', {text: doc.title, style:'flex:1;color:#e2e8f0;font-size:13px;'});
+        if (doc.file_ref) {
+          var link = el('a', {href: doc.file_ref, target:'_blank',
+            style:'font-size:12px;color:#38bdf8;text-decoration:none;', text:'📎 Open'});
+          row.appendChild(titleSpan);
+          row.appendChild(link);
+        } else {
+          row.appendChild(titleSpan);
+        }
+        var statusBadge3 = span('ops-badge '+(doc.status==='complete'?'badge-green':doc.status==='in_progress'?'badge-blue':'badge-gray'), doc.status);
+        row.appendChild(statusBadge3);
+        var editDocBtn = btn('ops-btn-sm', '✏', () => showDocForm(mod.id, doc, () => viewModernizationDetail(id)));
+        row.appendChild(editDocBtn);
+        docsCard.appendChild(row);
+      });
+    });
+  }
+  right.appendChild(docsCard);
+
+  // Linked deficiencies
+  var defCard = div('ops-card'); defCard.style.marginTop = '16px';
+  defCard.appendChild(div('ops-card-header', [el('h3', {text:'Linked Deficiencies'})]));
+  var linkedDefs = await API.deficiencies.list({modernization_id: mod.id}).catch(() => []);
+  if (!linkedDefs.length) {
+    defCard.appendChild(el('p', {cls:'ops-empty ops-small', text:'No deficiencies linked.'}));
+  } else {
+    defCard.appendChild(makeTable(['ID','Summary','SEV','Status','Deferred'],
+      linkedDefs.map(d => [
+        span('ops-muted', d.def_id_label),
+        el('strong', {text: d.summary}),
+        sevBadge(d.severity),
+        statusBadge(d.status),
+        d.deferred_from_modernization ? span('ops-badge badge-orange','Deferred') : span('ops-muted','—')
+      ])
+    ));
+  }
+  right.appendChild(defCard);
+  two.appendChild(right);
+  wrap.appendChild(two);
+  setContent(wrap);
+}
+
+function showModernizationForm(existing, onDone) {
+  var isEdit = !!existing;
+  var body = div('ops-form-grid');
+
+  var titleInp = el('input',{}); titleInp.className='ops-input'; titleInp.placeholder='Modernization title';
+  if (existing) titleInp.value = existing.title || '';
+  body.appendChild(fg('Title *', titleInp, true));
+
+  var descInp = document.createElement('textarea'); descInp.className='ops-input'; descInp.rows=3;
+  descInp.placeholder='Description of the modernization scope';
+  if (existing) descInp.value = existing.description || '';
+  body.appendChild(fg('Description', descInp, true));
+
+  var statusSel = sel(MOD_STATUSES, existing?.status || 'design');
+  body.appendChild(fg('Status', statusSel));
+
+  var assignInp = el('input',{}); assignInp.className='ops-input'; assignInp.placeholder='Assigned user';
+  if (existing) assignInp.value = existing.assigned_to || '';
+  body.appendChild(fg('Assigned To', assignInp));
+
+  var approverInp = el('input',{}); approverInp.className='ops-input'; approverInp.placeholder='Approver user';
+  if (existing) approverInp.value = existing.approver || '';
+  body.appendChild(fg('Approver', approverInp));
+
+  var startInp = el('input',{}); startInp.className='ops-input'; startInp.type='date';
+  if (existing?.start_date) startInp.value = existing.start_date.slice(0,10);
+  body.appendChild(fg('Start Date', startInp));
+
+  var targetInp = el('input',{}); targetInp.className='ops-input'; targetInp.type='date';
+  if (existing?.target_completion) targetInp.value = existing.target_completion.slice(0,10);
+  body.appendChild(fg('Target Completion', targetInp));
+
+  var estPartsInp = el('input',{}); estPartsInp.className='ops-input'; estPartsInp.type='number'; estPartsInp.placeholder='0.00';
+  if (existing) estPartsInp.value = existing.est_parts_cost || '';
+  body.appendChild(fg('Est. Parts Cost ($)', estPartsInp));
+
+  var estLaborInp = el('input',{}); estLaborInp.className='ops-input'; estLaborInp.type='number'; estLaborInp.placeholder='0.00';
+  if (existing) estLaborInp.value = existing.est_labor_cost || '';
+  body.appendChild(fg('Est. Labor Cost ($)', estLaborInp));
+
+  var estContractorInp = el('input',{}); estContractorInp.className='ops-input'; estContractorInp.type='number'; estContractorInp.placeholder='0.00';
+  if (existing) estContractorInp.value = existing.est_contractor_cost || '';
+  body.appendChild(fg('Est. Contractor Cost ($)', estContractorInp));
+
+  modal(isEdit ? 'Edit Modernization' : 'New Modernization', body, async () => {
+    if (!titleInp.value.trim()) throw new Error('Title is required.');
+    var data = {
+      title:               titleInp.value.trim(),
+      description:         descInp.value.trim(),
+      status:              statusSel.value,
+      assigned_to:         assignInp.value.trim(),
+      approver:            approverInp.value.trim(),
+      start_date:          startInp.value || '',
+      target_completion:   targetInp.value || '',
+      est_parts_cost:      parseFloat(estPartsInp.value) || 0,
+      est_labor_cost:      parseFloat(estLaborInp.value) || 0,
+      est_contractor_cost: parseFloat(estContractorInp.value) || 0,
+    };
+    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
+    if (isEdit) {
+      await API.modernizations.update(existing.id, data);
+    } else {
+      await API.modernizations.create(data);
+    }
+    if (onDone) onDone();
+  }, isEdit ? 'Save Changes' : 'Create Modernization');
+}
+
+function showDocForm(modId, existing, onDone) {
+  var isEdit = !!existing;
+  var body = div('ops-form-grid');
+
+  var typeS = sel(MOD_DOC_TYPES, existing?.doc_type || 'other');
+  body.appendChild(fg('Document Type', typeS));
+
+  var titleInp = el('input',{}); titleInp.className='ops-input'; titleInp.placeholder='Document title';
+  if (existing) titleInp.value = existing.title || '';
+  body.appendChild(fg('Title *', titleInp, true));
+
+  var fileInp = el('input',{}); fileInp.className='ops-input'; fileInp.placeholder='Nextcloud path or URL';
+  if (existing) fileInp.value = existing.file_ref || '';
+  body.appendChild(fg('File Reference / URL', fileInp, true));
+
+  var statusS = sel([['pending','Pending'],['in_progress','In Progress'],['complete','Complete']], existing?.status||'pending');
+  body.appendChild(fg('Status', statusS));
+
+  var notesInp = document.createElement('textarea'); notesInp.className='ops-input'; notesInp.rows=2;
+  notesInp.placeholder='Notes';
+  if (existing) notesInp.value = existing.notes || '';
+  body.appendChild(fg('Notes', notesInp, true));
+
+  modal(isEdit ? 'Edit Document' : 'Add TDP Document', body, async () => {
+    if (!titleInp.value.trim()) throw new Error('Title is required.');
+    var data = {
+      doc_type: typeS.value,
+      title:    titleInp.value.trim(),
+      file_ref: fileInp.value.trim(),
+      status:   statusS.value,
+      notes:    notesInp.value.trim(),
+    };
+    if (isEdit) {
+      await API.modernizations.updateDoc(modId, existing.id, data);
+    } else {
+      await API.modernizations.addDoc(modId, data);
+    }
+    if (onDone) onDone();
+  }, isEdit ? 'Save Changes' : 'Add Document');
 }
 
 /* ── Platform Form ── */
