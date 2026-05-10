@@ -50,8 +50,8 @@ class Version1040Date20260510000000 extends SimpleMigrationStep {
         }
 
         // ── ops_modernization_docs ─────────────────────────────────
-        if (!$schema->hasTable('ops_modernization_docs')) {
-            $t = $schema->createTable('ops_modernization_docs');
+        if (!$schema->hasTable('ops_mod_docs')) {
+            $t = $schema->createTable('ops_mod_docs');
             $t->addColumn('id',                Types::INTEGER,  ['autoincrement' => true, 'notnull' => true]);
             $t->addColumn('modernization_id',  Types::INTEGER,  ['notnull' => true]);
             $t->addColumn('doc_type',          Types::STRING,   ['notnull' => true, 'length' => 32, 'default' => 'other']);
@@ -62,13 +62,13 @@ class Version1040Date20260510000000 extends SimpleMigrationStep {
             $t->addColumn('created_by',        Types::STRING,   ['notnull' => false, 'length' => 64, 'default' => '']);
             $t->addColumn('created_at',        Types::DATETIME, ['notnull' => false]);
             $t->setPrimaryKey(['id']);
-            $t->addIndex(['modernization_id'], 'opss_md_mod_idx');
-            $t->addIndex(['doc_type'],         'opss_md_type_idx');
+            $t->addIndex(['modernization_id'], 'opss_mdd_mod_idx');
+            $t->addIndex(['doc_type'],         'opss_mdd_type_idx');
         }
 
         // ── ops_modernization_procedures ───────────────────────────
-        if (!$schema->hasTable('ops_modernization_procedures')) {
-            $t = $schema->createTable('ops_modernization_procedures');
+        if (!$schema->hasTable('ops_mod_procedures')) {
+            $t = $schema->createTable('ops_mod_procedures');
             $t->addColumn('id',                Types::INTEGER,  ['autoincrement' => true, 'notnull' => true]);
             $t->addColumn('modernization_id',  Types::INTEGER,  ['notnull' => true]);
             $t->addColumn('procedure_id',      Types::INTEGER,  ['notnull' => true]);
@@ -76,8 +76,8 @@ class Version1040Date20260510000000 extends SimpleMigrationStep {
             $t->addColumn('created_by',        Types::STRING,   ['notnull' => false, 'length' => 64, 'default' => '']);
             $t->addColumn('created_at',        Types::DATETIME, ['notnull' => false]);
             $t->setPrimaryKey(['id']);
-            $t->addIndex(['modernization_id'], 'opss_mp_mod_idx');
-            $t->addIndex(['procedure_id'],     'opss_mp_proc_idx');
+            $t->addIndex(['modernization_id'], 'opss_mpp_mod_idx');
+            $t->addIndex(['procedure_id'],     'opss_mpp_proc_idx');
         }
 
         // ── Add modernization fields to deficiencies ───────────────
