@@ -76,6 +76,7 @@ class Procedure extends Entity implements \JsonSerializable {
             'created_by'                => $this->createdBy,
             'created_at'                => $this->createdAt,
             'updated_at'                => $this->updatedAt,
+            'platform_id'               => $this->platformId,
             'computed_status'           => $status,
         ];
     }

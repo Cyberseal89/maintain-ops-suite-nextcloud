@@ -30,6 +30,7 @@ class Deficiency extends Entity implements \JsonSerializable {
     protected string  $correctiveAction   = '';
     protected string  $closedBy           = '';
     protected ?string $closedAt           = null;
+    protected ?int    $platformId         = null;
     protected string  $createdBy              = '';
     protected string  $createdAt              = '';
     protected string  $updatedAt              = '';
@@ -106,6 +107,7 @@ class Deficiency extends Entity implements \JsonSerializable {
             'corrective_action'   => $this->correctiveAction,
             'closed_by'           => $this->closedBy,
             'closed_at'           => $this->closedAt,
+            'platform_id'         => $this->platformId,
             'created_by'              => $this->createdBy,
             'created_at'              => $this->createdAt,
             'updated_at'              => $this->updatedAt,
