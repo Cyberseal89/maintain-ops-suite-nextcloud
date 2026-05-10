@@ -2294,9 +2294,7 @@ async function showAddItemForm(proj, onDone) {
     };
     var result = await API.availProjects.addItem(proj.id, data);
     if (result.warnings && result.warnings.length) {
-      alert('Item added with warnings:
-' + result.warnings.join('
-'));
+      alert('Item added with warnings: ' + result.warnings.join(', '));
     }
     if (onDone) onDone();
   }, 'Add Item');
