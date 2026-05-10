@@ -1864,6 +1864,7 @@ function buildSidebar() {
     {label:'PM Dashboard',   route:'pm-dashboard',  icon:'⚙', section:'Maintenance'},
     {label:'All Procedures', route:'pm-procedures', icon:'≡'},
     {label:'Deficiencies',   route:'deficiencies',  icon:'⚠', section:'Deficiencies'},
+    {label:'Modernizations',  route:'modernizations', icon:'🔧', section:'Maintenance'},
     {label:'Settings',       route:'settings',      icon:'⚙', section:'Admin'},
     {label:'Platforms',       route:'platforms',     icon:'🌐', section:'Admin'},
   ];
@@ -1895,6 +1896,7 @@ async function dispatch(route, param) {
     else if (route==='pm-dashboard')  await viewPmDashboard();
     else if (route==='pm-procedures') await viewPmProcedures();
     else if (route==='deficiencies')  await viewDeficiencies();
+    else if (route==='modernizations') await viewModernizations();
     else if (route==='def-detail')    await viewDefDetail(parseInt(param));
     else if (route==='settings')      await viewSettings();
     else if (route==='platforms')     await viewPlatforms();
