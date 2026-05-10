@@ -30,7 +30,7 @@ class Deficiency extends Entity implements \JsonSerializable {
     protected string  $correctiveAction   = '';
     protected string  $closedBy           = '';
     protected ?string $closedAt           = null;
-    protected ?int    $platformId         = null;
+    protected ?int     $platformId         = null;
     protected string  $createdBy              = '';
     protected string  $createdAt              = '';
     protected string  $updatedAt              = '';
