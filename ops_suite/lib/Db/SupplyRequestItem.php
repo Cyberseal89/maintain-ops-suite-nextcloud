@@ -13,6 +13,10 @@ class SupplyRequestItem extends Entity implements \JsonSerializable {
     protected float  $unitCostEst       = 0;
     protected float  $unitCostActual    = 0;
     protected string $vendor            = '';
+    protected string $manufacturer      = '';
+    protected string $nsn               = '';
+    protected string $cageCode          = '';
+    protected string $unitOfMeasure     = 'each';
     protected string $status            = 'pending';
     protected string $notes             = '';
     protected string $createdAt         = '';
@@ -31,6 +35,10 @@ class SupplyRequestItem extends Entity implements \JsonSerializable {
             'est_total'          => $this->quantityRequested * $this->unitCostEst,
             'actual_total'       => $this->quantityReceived  * $this->unitCostActual,
             'vendor'             => $this->vendor,
+            'manufacturer'       => $this->manufacturer,
+            'nsn'                => $this->nsn,
+            'cage_code'          => $this->cageCode,
+            'unit_of_measure'    => $this->unitOfMeasure,
             'status'             => $this->status,
             'notes'              => $this->notes,
             'created_at'         => $this->createdAt,

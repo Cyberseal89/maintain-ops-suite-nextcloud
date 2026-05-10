@@ -149,6 +149,10 @@ class SupplyController extends Controller {
         $item->setQuantityRequested((float)($data['quantity_requested'] ?? 1));
         $item->setUnitCostEst((float)($data['unit_cost_est'] ?? 0));
         $item->setVendor($data['vendor'] ?? '');
+        $item->setManufacturer($data['manufacturer'] ?? '');
+        $item->setNsn($data['nsn'] ?? '');
+        $item->setCageCode($data['cage_code'] ?? '');
+        $item->setUnitOfMeasure($data['unit_of_measure'] ?? 'each');
         $item->setStatus('pending');
         $item->setNotes($data['notes'] ?? '');
         $item->setCreatedAt(date('Y-m-d H:i:s'));
