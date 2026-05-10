@@ -1362,6 +1362,30 @@ async function viewDefDetail(id) {
   left.appendChild(ac2);
   two.appendChild(left);
 
+  // Supply Requests section
+  var supplyReqs = def.supply_requests || [];
+  if (supplyReqs.length) {
+    var srCard = div('ops-card'); srCard.style.marginBottom = '16px';
+    srCard.appendChild(div('ops-card-header', [el('h3', {text: '🛒 Supply Requests (' + supplyReqs.length + ')'})]));
+    srCard.appendChild(makeTable(
+      ['SRFQ #', 'Status', 'Priority', 'Items', 'Needed By'],
+      supplyReqs.map(sr => {
+        var statB = span('ops-badge '+(SR_STATUS_COLORS[sr.status]||'badge-gray'),
+          SR_STATUSES.find(s=>s[0]===sr.status)?.[1]||sr.status);
+        var priColor = sr.priority==='emergency'?'badge-red':sr.priority==='urgent'?'badge-orange':'badge-gray';
+        var rfqEl = el('strong', {text: sr.rfq_number||'--', style:'cursor:pointer;color:#38bdf8;'});
+        rfqEl.onclick = () => navigate('supply-detail', sr.id);
+        return [
+          rfqEl, statB,
+          span('ops-badge '+priColor, sr.priority),
+          span('ops-badge badge-gray', (sr.item_count||0)+' items'),
+          sr.needed_by ? sr.needed_by.slice(0,10) : span('ops-muted','--'),
+        ];
+      })
+    ));
+    right.insertBefore(srCard, right.firstChild);
+  }
+
   // History
   var right=div('');
   var hc=div('ops-card ops-detail-card');
@@ -1625,6 +1649,27 @@ async function viewModernizationDetail(id) {
 
   // Linked deficiencies
   var defCard = div('ops-card'); defCard.style.marginTop = '16px';
+  // Supply Requests linked to modernization
+  var modSupplyReqs = mod.supply_requests || [];
+  if (modSupplyReqs.length) {
+    var msrCard = div('ops-card'); msrCard.style.marginBottom = '16px';
+    msrCard.appendChild(div('ops-card-header', [el('h3', {text: '🛒 Supply Requests (' + modSupplyReqs.length + ')'})]));
+    msrCard.appendChild(makeTable(
+      ['SRFQ #', 'Status', 'Priority', 'Items', 'Needed By'],
+      modSupplyReqs.map(sr => {
+        var statB = span('ops-badge '+(SR_STATUS_COLORS[sr.status]||'badge-gray'),
+          SR_STATUSES.find(s=>s[0]===sr.status)?.[1]||sr.status);
+        var priColor = sr.priority==='emergency'?'badge-red':sr.priority==='urgent'?'badge-orange':'badge-gray';
+        var rfqEl = el('strong', {text: sr.rfq_number||'--', style:'cursor:pointer;color:#38bdf8;'});
+        rfqEl.onclick = () => navigate('supply-detail', sr.id);
+        return [rfqEl, statB, span('ops-badge '+priColor, sr.priority),
+          span('ops-badge badge-gray', (sr.item_count||0)+' items'),
+          sr.needed_by ? sr.needed_by.slice(0,10) : span('ops-muted','--')];
+      })
+    ));
+    right.appendChild(msrCard);
+  }
+
   defCard.appendChild(div('ops-card-header', [el('h3', {text:'Linked Deficiencies'})]));
   var linkedDefs = await API.deficiencies.list({modernization_id: mod.id}).catch(() => []);
   if (!linkedDefs.length) {

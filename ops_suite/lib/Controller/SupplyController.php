@@ -40,7 +40,11 @@ class SupplyController extends Controller {
         $priority = $this->request->getParam('priority') ?: null;
         $platformParam = $this->request->getParam('platform_ids', '');
         $platformIds   = $platformParam ? array_map('intval', explode(',', $platformParam)) : [];
-        $requests = $this->mapper->findAll($status, $priority, $platformIds);
+        $sourceType = $this->request->getParam('source_type') ?: null;
+        $sourceId   = $this->request->getParam('source_id') ? (int)$this->request->getParam('source_id') : null;
+        $requests = ($sourceType && $sourceId)
+            ? $this->mapper->findForSource($sourceType, $sourceId)
+            : $this->mapper->findAll($status, $priority, $platformIds);
         $result = [];
         foreach ($requests as $req) {
             $data  = $req->jsonSerialize();
