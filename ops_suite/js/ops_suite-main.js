@@ -2042,10 +2042,7 @@ function showAssetVerifyModal(asset, onDone) {
   // Info block
   var info = div('');
   info.style.cssText = 'background:#0f172a;border-radius:8px;padding:12px;font-size:13px;color:#94a3b8;margin-bottom:8px;';
-  info.innerHTML = '<strong style="color:#e2e8f0;">' + asset.name + '</strong><br>' +
-    'Type: ' + (asset.asset_type||'—') + ' &nbsp;|&nbsp; Serial: ' + (asset.serial_number||'—') + '<br>' +
-    'Last Verified: ' + (asset.last_verified_at ? asset.last_verified_at.slice(0,10) : 'Never') +
-    (asset.verified_by ? ' by ' + asset.verified_by : '');
+  info.innerHTML = '<strong style="color:#e2e8f0;">' + asset.name + '</strong><br>Type: ' + (asset.asset_type||'—') + ' | Serial: ' + (asset.serial_number||'—') + '<br>Last Verified: ' + (asset.last_verified_at ? asset.last_verified_at.slice(0,10) : 'Never') + (asset.verified_by ? ' by ' + asset.verified_by : '');
   body.appendChild(info);
 
   var locInp = el('input',{}); locInp.className='ops-input'; locInp.placeholder='Location (update if changed)';
