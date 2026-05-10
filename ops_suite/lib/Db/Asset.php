@@ -23,6 +23,7 @@ use OCP\AppFramework\Db\Entity;
  * @method string  getCreatedBy()       @method void setCreatedBy(string $v)
  * @method string  getCreatedAt()       @method void setCreatedAt(string $v)
  * @method string  getUpdatedAt()       @method void setUpdatedAt(string $v)
+ * @method ?int    getPlatformId()   @method void setPlatformId(?int \$v)
  */
 class Asset extends Entity implements \JsonSerializable {
     protected string  $name           = '';
@@ -42,6 +43,7 @@ class Asset extends Entity implements \JsonSerializable {
     protected string  $createdBy      = '';
     protected string  $createdAt      = '';
     protected string  $updatedAt      = '';
+    protected ?int     $platformId     = null;
 
     public function jsonSerialize(): array {
         $id = $this->getId();
@@ -65,6 +67,7 @@ class Asset extends Entity implements \JsonSerializable {
             'created_by'      => $this->createdBy,
             'created_at'      => $this->createdAt,
             'updated_at'      => $this->updatedAt,
+            'platform_id'     => $this->platformId,
         ];
     }
 }

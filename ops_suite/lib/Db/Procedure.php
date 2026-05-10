@@ -44,6 +44,7 @@ class Procedure extends Entity implements \JsonSerializable {
     protected string  $createdBy               = '';
     protected string  $createdAt               = '';
     protected string  $updatedAt               = '';
+    protected ?int     $platformId     = null;
 
     public function jsonSerialize(): array {
         $id    = $this->getId();
