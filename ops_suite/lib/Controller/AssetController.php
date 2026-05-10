@@ -68,6 +68,19 @@ class AssetController extends Controller {
         $asset->setPlatformId(isset($data['platform_id']) && $data['platform_id'] ? (int)$data['platform_id'] : null);
         $asset->setTags($data['tags'] ?? '');
         $asset->setLinkedAssets($data['linked_assets'] ?? '');
+        // Auto-generate UII if not provided (ISO 15459)
+        $uii = $data['uii'] ?? '';
+        if (empty($uii)) {
+            $cage   = strtoupper($data['cage_code'] ?? '');
+            $serial = strtoupper($data['serial_number'] ?? '');
+            if (!empty($cage) && !empty($serial)) {
+                $uii = '//' . $cage . '/' . $serial;
+            } else {
+                $rand = strtoupper(substr(str_replace('-', '', sprintf('%08x-%04x-%04x-%04x', mt_rand(0,0xffffffff), mt_rand(0,0xffff), mt_rand(0,0xffff), mt_rand(0,0xffff))), 0, 16));
+                $uii = '//ALTO/' . $rand;
+            }
+        }
+        $asset->setUii($uii);
         $asset->setCreatedBy($uid);
         $asset->setCreatedAt($now);
         $asset->setUpdatedAt($now);
