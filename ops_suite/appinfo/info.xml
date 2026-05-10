@@ -31,8 +31,15 @@ Full supply requisition workflow from request through receipt. Supports NSN, CAG
 **Platform Management**
 Multi-site support with Nextcloud group-based access control. Each platform (site, location, or organizational unit) is linked to a Nextcloud group. Users only see data for their assigned platforms.
 
-**Mobile App**
-Pairs with the Maintain Ops Suite Android app (available on Google Play) for field technician access to PM completion, deficiency logging, deficiency closeout, and supply request status tracking.
+**Mobile App** *(Pending Release on Google Play)*
+Pairs with the Maintain Ops Suite Android app for field technician access to PM completion, deficiency logging, deficiency closeout, and supply request status tracking — all from the field without needing a desktop.
+
+The mobile app includes a 7-day free trial. After the trial period, a subscription is required for write access (logging deficiencies, completing PMs, closing deficiencies, requesting parts). Read-only access remains free.
+
+- Monthly plan: $9.99/month
+- Annual plan: $79.99/year (save 33%)
+
+Subscription revenue directly supports the continued development of Maintain Ops Suite. As an independent platform built to serve field operations teams of all sizes — from school districts to defense contractors — your subscription helps us keep building the tools you need.
    ]]></description>
    <version>2.0.3</version>
    <licence>AGPL-3.0-or-later</licence>
