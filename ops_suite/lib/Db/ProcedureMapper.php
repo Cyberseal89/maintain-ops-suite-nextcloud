@@ -39,7 +39,7 @@ class ProcedureMapper extends QBMapper {
         return $this->findEntity($qb);
     }
 
-    public function findAll(?int $assetId = null, bool $overdueOnly = false, ?string $assignedTo = null): array {
+    public function findAll(?int $assetId = null, bool $overdueOnly = false, ?string $assignedTo = null, array $platformIds = []): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')->from($this->getTableName());
         if ($assetId !== null) {
@@ -51,6 +51,7 @@ class ProcedureMapper extends QBMapper {
         if ($assignedTo !== null) {
             $qb->andWhere($qb->expr()->eq('assigned_to', $qb->createNamedParameter($assignedTo)));
         }
+        $this->addPlatformFilter($qb, $platformIds);
         $qb->orderBy('next_due', 'ASC');
         return $this->findEntities($qb);
     }

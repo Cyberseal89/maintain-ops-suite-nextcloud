@@ -649,7 +649,7 @@ async function viewAssets() {
 
   async function load(){
     cardEl.innerHTML=''; cardEl.appendChild(span('ops-muted','  Loading…'));
-    try{ assets=await API.assets.list(activeType?{type:activeType}:{}); clearCache('assets'); _cache.assets=assets; }
+    try{ var ap=activeType?{type:activeType}:{}; if(_selectedPlatformIds.length) ap.platform_ids=_selectedPlatformIds.join(','); assets=await API.assets.list(ap); clearCache('assets'); _cache.assets=assets; }
     catch(e){ cardEl.innerHTML='<div class="ops-empty" style="color:#f87171">⚠ '+e.message+'</div>'; return; }
     var search=(searchEl.value||'').toLowerCase();
     var filtered=search?assets.filter(a=>(a.name+a.manufacturer+a.model+a.location).toLowerCase().includes(search)):assets;
@@ -791,7 +791,8 @@ async function viewPmDashboard() {
   var hdr=div('ops-page-header',[el('h2',{text:'Maintenance Dashboard'}),btn('primary','All Procedures →',()=>navigate('pm-procedures'))]);
   wrap.appendChild(hdr);
   var loading=span('ops-muted','Loading…'); wrap.appendChild(loading);
-  var [all,overdue] = await Promise.all([API.procedures.list({}),API.procedures.list({overdue:'1'})]).catch(e=>{
+  var _pf=_selectedPlatformIds.length?{platform_ids:_selectedPlatformIds.join(',')}:{};
+  var [all,overdue] = await Promise.all([API.procedures.list({..._pf}),API.procedures.list({..._pf,overdue:'1'})]).catch(e=>{
     loading.remove(); wrap.appendChild(el('div',{cls:'ops-empty',html:'<span style="color:#f87171">⚠ '+e.message+'</span>'})); return [[],[]];
   });
   loading.remove();
@@ -1177,7 +1178,7 @@ async function viewPmProcedures() {
   async function load(){
     cardEl.innerHTML=''; cardEl.appendChild(span('ops-muted','  Loading…'));
     var p={}; if(activeTab==='overdue') p.overdue='1';
-    try{ procs=await API.procedures.list(p); }
+    try{ if(_selectedPlatformIds.length) p.platform_ids=_selectedPlatformIds.join(','); procs=await API.procedures.list(p); }
     catch(e){ cardEl.innerHTML='<div class="ops-empty" style="color:#f87171">⚠ '+e.message+'</div>'; return; }
     if(activeTab==='due_soon'){ var now=Date.now(),in7=now+7*86400000; procs=procs.filter(p=>{var d=p.next_due?new Date(p.next_due).getTime():0;return d>=now&&d<=in7;}); }
     cardEl.innerHTML='';
@@ -1238,7 +1239,7 @@ async function viewDeficiencies() {
     else if(activeTab==='SEV-2'){p.status='open_all';p.severity='SEV-2';}
     else if(activeTab==='in_work') p.status='in_work';
     else if(activeTab==='closed')  p.status='closed';
-    try{ defs=await API.deficiencies.list(p); }
+    try{ if(_selectedPlatformIds.length) p.platform_ids=_selectedPlatformIds.join(','); defs=await API.deficiencies.list(p); }
     catch(e){ cardEl.innerHTML='<div class="ops-empty" style="color:#f87171">⚠ '+e.message+'</div>'; return; }
     cardEl.innerHTML='';
     cardEl.appendChild(makeTable(
