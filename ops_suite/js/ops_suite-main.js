@@ -2178,9 +2178,11 @@ function showItemPopup(item, x, y) {
   popup.appendChild(closeBtn);
 
   document.body.appendChild(popup);
-  document.addEventListener('click', function handler(e) {
-    if (!popup.contains(e.target)) { popup.remove(); document.removeEventListener('click', handler); }
-  }, {once: false});
+  setTimeout(() => {
+    document.addEventListener('click', function handler(e) {
+      if (!popup.contains(e.target)) { popup.remove(); document.removeEventListener('click', handler); }
+    });
+  }, 100);
 }
 
 function showAvailProjectForm(existing, onDone) {
