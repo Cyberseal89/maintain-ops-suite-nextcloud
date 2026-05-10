@@ -61,6 +61,7 @@ class ProcedureController extends Controller {
         $proc->setDocumentRef($data['document_ref'] ?? '');
         $proc->setDescription($data['description'] ?? '');
         $proc->setEstHours((float)($data['est_hours'] ?? 0));
+        $proc->setPlatformId(isset($data['platform_id']) && $data['platform_id'] ? (int)$data['platform_id'] : null);
         $proc->setCreateDeficiencyOnFail((int)($data['create_deficiency_on_fail'] ?? 0));
         $proc->setCreatedBy($uid);
         $proc->setCreatedAt($now);
