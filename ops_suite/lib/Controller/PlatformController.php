@@ -12,7 +12,6 @@ use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\IRequest;
 use OCP\IUserSession;
-use OCP\IGroupManager;
 
 class PlatformController extends Controller {
     public function __construct(
@@ -20,8 +19,7 @@ class PlatformController extends Controller {
         IRequest                $request,
         private readonly PlatformMapper     $mapper,
         private readonly PermissionService  $permission,
-        private readonly IUserSession       $userSession,
-        private readonly IGroupManager      $groupManager
+        private readonly IUserSession       $userSession
     ) {
         parent::__construct($appName, $request);
     }
