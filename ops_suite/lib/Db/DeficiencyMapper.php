@@ -12,6 +12,17 @@ class DeficiencyMapper extends QBMapper {
         parent::__construct($db, 'ops_deficiencies', Deficiency::class);
     }
 
+    private function addPlatformFilter(\OCP\DB\QueryBuilder\IQueryBuilder $qb, array $platformIds): void {
+        if (empty($platformIds)) return;
+        $qb->innerJoin(
+            $this->getTableName(),
+            'ops_assets',
+            'a',
+            $qb->expr()->eq($this->getTableName().'.asset_id', 'a.id')
+        );
+        $qb->andWhere($qb->expr()->in('a.platform_id', $qb->createNamedParameter($platformIds, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_INT_ARRAY)));
+    }
+
     public function find(int $id): Deficiency {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')->from($this->getTableName())
@@ -45,33 +56,36 @@ class DeficiencyMapper extends QBMapper {
     }
 
     /** @return Deficiency[] top N open deficiencies ordered by severity */
-    public function findCritical(int $limit = 5): array {
+    public function findCritical(int $limit = 5, array $platformIds = []): array {
         $qb = $this->db->getQueryBuilder();
-        $qb->select('*')->from($this->getTableName())
+        $qb->select($this->getTableName().'.*')->from($this->getTableName())
            ->where($qb->expr()->notIn('status',
                $qb->createNamedParameter(['closed', 'cancelled'], IQueryBuilder::PARAM_STR_ARRAY)))
            ->orderBy('severity', 'ASC')
            ->addOrderBy('created_at', 'DESC')
            ->setMaxResults($limit);
+        $this->addPlatformFilter($qb, $platformIds);
         return $this->findEntities($qb);
     }
 
-    public function countOpen(): int {
+    public function countOpen(array $platformIds = []): int {
         $qb = $this->db->getQueryBuilder();
         $qb->select($qb->createFunction('COUNT(*) AS cnt'))->from($this->getTableName())
            ->where($qb->expr()->notIn('status',
                $qb->createNamedParameter(['closed', 'cancelled'], IQueryBuilder::PARAM_STR_ARRAY)));
+        $this->addPlatformFilter($qb, $platformIds);
         $r = $qb->executeQuery(); $row = $r->fetch(); $r->closeCursor();
         return (int)($row['cnt'] ?? 0);
     }
 
-    public function countBySeverity(): array {
+    public function countBySeverity(array $platformIds = []): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('severity', $qb->createFunction('COUNT(*) AS cnt'))
            ->from($this->getTableName())
            ->where($qb->expr()->notIn('status',
                $qb->createNamedParameter(['closed', 'cancelled'], IQueryBuilder::PARAM_STR_ARRAY)))
            ->groupBy('severity');
+        $this->addPlatformFilter($qb, $platformIds);
         $r = $qb->executeQuery(); $rows = $r->fetchAll(); $r->closeCursor();
         $out = [];
         foreach ($rows as $row) { $out[$row['severity']] = (int)$row['cnt']; }

@@ -36,7 +36,7 @@ class AssetMapper extends QBMapper {
         return (int)($row['cnt'] ?? 0);
     }
 
-    public function countByType(): array {
+    public function countByType(array $platformIds = []): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('asset_type', $qb->createFunction('COUNT(*) AS cnt'))
            ->from($this->getTableName())
