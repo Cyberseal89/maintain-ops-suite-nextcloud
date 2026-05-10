@@ -47,6 +47,14 @@ return [
         ['name' => 'settings#save', 'url' => '/api/settings', 'verb' => 'POST'],
 
         ['name' => 'page#manual',  'url' => '/user-manual', 'verb' => 'GET'],
+        // ── Work Packages ─────────────────────────────────────────
+        ['name' => 'workPackage#index',      'url' => '/api/work-packages',                        'verb' => 'GET'],
+        ['name' => 'workPackage#show',       'url' => '/api/work-packages/{id}',                   'verb' => 'GET'],
+        ['name' => 'workPackage#create',     'url' => '/api/work-packages',                        'verb' => 'POST'],
+        ['name' => 'workPackage#update',     'url' => '/api/work-packages/{id}',                   'verb' => 'PUT'],
+        ['name' => 'workPackage#destroy',    'url' => '/api/work-packages/{id}',                   'verb' => 'DELETE'],
+        ['name' => 'workPackage#addItem',    'url' => '/api/work-packages/{id}/items',             'verb' => 'POST'],
+        ['name' => 'workPackage#removeItem', 'url' => '/api/work-packages/{id}/items/{itemId}',    'verb' => 'DELETE'],
         // ── Availability Projects ──────────────────────────────────
         ['name' => 'availProject#index',      'url' => '/api/avail-projects',                       'verb' => 'GET'],
         ['name' => 'availProject#show',       'url' => '/api/avail-projects/{id}',                  'verb' => 'GET'],
