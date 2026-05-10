@@ -394,6 +394,8 @@ async function buildAssetForm(data) {
   if(data.warranty_expiry) f.warranty.value=data.warranty_expiry;
   f.status   = add('Status', sel([['operational','Operational'],['degraded','Degraded'],
     ['offline','Offline'],['maintenance','In Maintenance'],['decommissioned','Decommissioned']], data.status||'operational'));
+  var platOpts = [['','— No Platform —']].concat(platforms.map(p=>[String(p.id), p.name + (p.location ? ' ('+p.location+')' : '')]));
+  f.platform = add('Platform', sel(platOpts, data.platform_id ? String(data.platform_id) : ''));
 
   // Multi-asset picker for linked assets
   var linkedPicker = multiAssetPicker(assets.filter(a=>a.id!==(data.id||0)), data.linked_assets||'');
