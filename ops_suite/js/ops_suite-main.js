@@ -1298,6 +1298,17 @@ async function viewDefDetail(id) {
   hdr.appendChild(stSel);
   if(def.status!=='closed')
     hdr.appendChild(btn('danger','✓ Close',()=>{ showCloseDeficiencyModal(def, ()=>viewDefDetail(id)); }));
+    hdr.appendChild(btn('','🔧 Escalate to Modernization', () => {
+      showModernizationForm({
+        title: 'Modernization — ' + def.summary,
+        description: 'Initiated from deficiency ' + def.def_id_label,
+        platform_id: null,
+      }, async (modId) => {
+        // Link deficiency to modernization
+        if (modId) await API.deficiencies.update(def.id, {modernization_id: modId});
+        navigate('modernizations');
+      });
+    }));
   wrap.appendChild(hdr);
 
   var two=div('ops-two-col');
@@ -1715,10 +1726,11 @@ function showModernizationForm(existing, onDone) {
     if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
     if (isEdit) {
       await API.modernizations.update(existing.id, data);
+      if (onDone) onDone(existing.id);
     } else {
-      await API.modernizations.create(data);
+      var created = await API.modernizations.create(data);
+      if (onDone) onDone(created.id);
     }
-    if (onDone) onDone();
   }, isEdit ? 'Save Changes' : 'Create Modernization');
 }
 
@@ -1864,7 +1876,7 @@ function buildSidebar() {
     {label:'PM Dashboard',   route:'pm-dashboard',  icon:'⚙', section:'Maintenance'},
     {label:'All Procedures', route:'pm-procedures', icon:'≡'},
     {label:'Deficiencies',   route:'deficiencies',  icon:'⚠', section:'Deficiencies'},
-    {label:'Modernizations',  route:'modernizations', icon:'🔧', section:'Maintenance'},
+    {label:'Modernizations',  route:'modernizations', icon:'🔧', section:'Modernization'},
     {label:'Settings',       route:'settings',      icon:'⚙', section:'Admin'},
     {label:'Platforms',       route:'platforms',     icon:'🌐', section:'Admin'},
   ];
