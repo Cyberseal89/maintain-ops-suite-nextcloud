@@ -101,6 +101,53 @@ class FilesController extends Controller {
         ]);
     }
 
+    /**
+     * @NoAdminRequired
+     * Creates TDP folder structure for an asset.
+     */
+    public function createTdpFolder(): DataResponse {
+        $uid      = $this->userSession->getUser()?->getUID();
+        $assetId  = $this->request->getParam('asset_id');
+        $assetName = $this->request->getParam('asset_name', 'Asset');
+
+        if (!$uid) {
+            return new DataResponse(['error' => 'Not authenticated'], Http::STATUS_UNAUTHORIZED);
+        }
+
+        $folderName = 'TDP/' . $assetId . ' — ' . preg_replace('/[^\w\s\-]/', '', $assetName);
+        $subFolders = ['Drawings', 'Tech Manuals', 'Test Plans', 'Training', 'PM SOPs', 'Other'];
+
+        try {
+            $userFolder = $this->rootFolder->getUserFolder($uid);
+
+            // Create TDP root
+            if (!$userFolder->nodeExists('TDP')) {
+                $userFolder->newFolder('TDP');
+            }
+
+            // Create asset folder
+            if (!$userFolder->nodeExists($folderName)) {
+                $userFolder->newFolder($folderName);
+            }
+
+            // Create subfolders
+            foreach ($subFolders as $sub) {
+                $subPath = $folderName . '/' . $sub;
+                if (!$userFolder->nodeExists($subPath)) {
+                    $userFolder->newFolder($subPath);
+                }
+            }
+
+            return new DataResponse([
+                'path'   => '/' . $folderName,
+                'url'    => '/apps/files/?dir=' . urlencode('/' . $folderName),
+                'folders'=> $subFolders,
+            ]);
+        } catch (\Exception $e) {
+            return new DataResponse(['error' => $e->getMessage()], Http::STATUS_INTERNAL_SERVER_ERROR);
+        }
+    }
+
     private function listFiles(\OCP\Files\Folder $folder): array {
         $items = [];
         foreach ($folder->getDirectoryListing() as $node) {

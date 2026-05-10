@@ -780,7 +780,15 @@ async function viewAssetDetail(id) {
     await API.assets.update(id, {verify: 1});
     viewAssetDetail(id);
   });
-  hdr.appendChild(editBtn); hdr.appendChild(logDefBtn); hdr.appendChild(addPmBtn); hdr.appendChild(modBtn); hdr.appendChild(verifyBtn);
+  var tdpBtn = btn('', '📁 TDP Folder', async () => {
+    var result = await API.files.createTdp(id, asset.name).catch(e => null);
+    if (result && result.url) {
+      window.open(result.url, '_blank');
+    } else {
+      alert('Could not create TDP folder.');
+    }
+  });
+  hdr.appendChild(editBtn); hdr.appendChild(logDefBtn); hdr.appendChild(addPmBtn); hdr.appendChild(modBtn); hdr.appendChild(verifyBtn); hdr.appendChild(tdpBtn);
   wrap.appendChild(hdr);
 
   var two=div('ops-two-col');
