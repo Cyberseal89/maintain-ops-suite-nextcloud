@@ -60,6 +60,7 @@ class DeficiencyMapper extends QBMapper {
         if ($assignedTo !== null) {
             $qb->andWhere($qb->expr()->eq('assigned_to', $qb->createNamedParameter($assignedTo)));
         }
+        $this->addPlatformFilter($qb, $platformIds);
         $qb->orderBy('created_at', 'DESC');
         return $this->findEntities($qb);
     }
