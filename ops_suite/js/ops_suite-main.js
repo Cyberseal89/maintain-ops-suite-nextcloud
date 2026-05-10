@@ -2351,8 +2351,7 @@ async function viewUserManual() {
   var loading = span('ops-muted', 'Loading manual…'); wrap.appendChild(loading);
 
   try {
-    var response = await fetch(ncUrl('/user-manual'));
-    var json = await response.json();
+    var json = await req('GET', '/user-manual');
     var html = json.html || '';
     loading.remove();
     var content2 = div('ops-card');
