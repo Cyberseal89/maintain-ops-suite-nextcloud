@@ -28,8 +28,8 @@ class PlatformController extends Controller {
     public function index(): DataResponse {
         $user = $this->userSession->getUser();
         $uid  = $user ? $user->getUID() : '';
-        // Admins see all platforms, others see only their assigned ones
-        if ($this->permission->isAdmin()) {
+        // Writers/admins see all platforms, others see only their assigned ones
+        if ($this->permission->canWrite()) {
             $platforms = $this->mapper->findAll();
         } else {
             $platforms = $this->mapper->findForUser($uid);
