@@ -45,7 +45,7 @@ function qs(p) {
 }
 
 var API = {
-  dashboard:    { stats:      ()      => req('GET',  '/api/dashboard/stats') },
+  dashboard:    { stats:      (pids)  => req('GET',  '/api/dashboard/stats' + (pids&&pids.length ? '?platform_ids='+pids.join(',') : '')) },
   assets:       { list:       p       => req('GET',  '/api/assets'+qs(p)),
                   get:        id      => req('GET',  '/api/assets/'+id),
                   create:     d       => req('POST', '/api/assets', d),
@@ -79,6 +79,7 @@ var API = {
 
 /* ── Cache ───────────────────────────────────────────────────── */
 var _cache = { assets:null, users:null, settings:null };
+var _selectedPlatformIds = []; // empty = all platforms
 async function getAssets()   { if (!_cache.assets)   _cache.assets   = await API.assets.list(); return _cache.assets; }
 async function getUsers()    { if (!_cache.users)    _cache.users    = await API.users.list();  return _cache.users; }
 async function getSettings() { if (!_cache.settings) _cache.settings = await API.settings.get(); return _cache.settings; }

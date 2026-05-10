@@ -19,22 +19,26 @@ class DashboardController extends Controller {
     }
     /** @NoAdminRequired */
     public function stats(): DataResponse {
-        $overdueProcs = $this->procedureMapper->findOverdue(6);
-        $criticalDefs = $this->deficiencyMapper->findCritical(6);
+        // Optional platform filter — comma-separated platform IDs
+        $platformParam = $this->request->getParam('platform_ids', '');
+        $platformIds   = $platformParam ? array_map('intval', explode(',', $platformParam)) : [];
+
+        $overdueProcs = $this->procedureMapper->findOverdue(6, $platformIds);
+        $criticalDefs = $this->deficiencyMapper->findCritical(6, $platformIds);
         return new DataResponse([
             'assets' => [
-                'total'  => $this->assetMapper->countAll(),
-                'byType' => $this->assetMapper->countByType(),
+                'total'  => $this->assetMapper->countAll($platformIds),
+                'byType' => $this->assetMapper->countByType($platformIds),
             ],
             'procedures' => [
-                'total'        => $this->procedureMapper->countAll(),
-                'overdue'      => $this->procedureMapper->countOverdue(),
-                'dueSoon'      => $this->procedureMapper->countDueThisWeek(),
-                'completed30d' => $this->procedureMapper->countCompletedLast30Days(),
+                'total'        => $this->procedureMapper->countAll($platformIds),
+                'overdue'      => $this->procedureMapper->countOverdue($platformIds),
+                'dueSoon'      => $this->procedureMapper->countDueThisWeek($platformIds),
+                'completed30d' => $this->procedureMapper->countCompletedLast30Days($platformIds),
             ],
             'deficiencies' => [
-                'open'       => $this->deficiencyMapper->countOpen(),
-                'bySeverity' => $this->deficiencyMapper->countBySeverity(),
+                'open'       => $this->deficiencyMapper->countOpen($platformIds),
+                'bySeverity' => $this->deficiencyMapper->countBySeverity($platformIds),
             ],
             'overdue_list'  => array_map(fn($p) => $p->jsonSerialize(), $overdueProcs),
             'critical_defs' => array_map(fn($d) => $d->jsonSerialize(), $criticalDefs),

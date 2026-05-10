@@ -12,6 +12,17 @@ class ProcedureMapper extends QBMapper {
         parent::__construct($db, 'ops_procedures', Procedure::class);
     }
 
+    private function addPlatformFilter(\OCP\DB\QueryBuilder\IQueryBuilder $qb, array $platformIds): void {
+        if (empty($platformIds)) return;
+        $qb->innerJoin(
+            $this->getTableName(),
+            'ops_assets',
+            'a',
+            $qb->expr()->eq($this->getTableName().'.asset_id', 'a.id')
+        );
+        $qb->andWhere($qb->expr()->in('a.platform_id', $qb->createNamedParameter($platformIds, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_INT_ARRAY)));
+    }
+
     public function find(int $id): Procedure {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')->from($this->getTableName())
@@ -35,47 +46,52 @@ class ProcedureMapper extends QBMapper {
         return $this->findEntities($qb);
     }
 
-    public function countAll(): int {
+    public function countAll(array $platformIds = []): int {
         $qb = $this->db->getQueryBuilder();
         $qb->select($qb->createFunction('COUNT(*) AS cnt'))->from($this->getTableName());
+        $this->addPlatformFilter($qb, $platformIds);
         $r = $qb->executeQuery(); $row = $r->fetch(); $r->closeCursor();
         return (int)($row['cnt'] ?? 0);
     }
 
-    public function countOverdue(): int {
+    public function countOverdue(array $platformIds = []): int {
         $qb = $this->db->getQueryBuilder();
         $qb->select($qb->createFunction('COUNT(*) AS cnt'))->from($this->getTableName())
            ->where($qb->expr()->lt('next_due', $qb->createNamedParameter(date('Y-m-d'))));
+        $this->addPlatformFilter($qb, $platformIds);
         $r = $qb->executeQuery(); $row = $r->fetch(); $r->closeCursor();
         return (int)($row['cnt'] ?? 0);
     }
 
-    public function countDueThisWeek(): int {
+    public function countDueThisWeek(array $platformIds = []): int {
         $qb = $this->db->getQueryBuilder();
         $soon = date('Y-m-d', strtotime('+7 days'));
         $qb->select($qb->createFunction('COUNT(*) AS cnt'))->from($this->getTableName())
            ->where($qb->expr()->lte('next_due', $qb->createNamedParameter($soon)))
            ->andWhere($qb->expr()->gte('next_due', $qb->createNamedParameter(date('Y-m-d'))));
+        $this->addPlatformFilter($qb, $platformIds);
         $r = $qb->executeQuery(); $row = $r->fetch(); $r->closeCursor();
         return (int)($row['cnt'] ?? 0);
     }
 
-    public function countCompletedLast30Days(): int {
+    public function countCompletedLast30Days(array $platformIds = []): int {
         $qb = $this->db->getQueryBuilder();
         $since = date('Y-m-d', strtotime('-30 days'));
         $qb->select($qb->createFunction('COUNT(*) AS cnt'))->from($this->getTableName())
            ->where($qb->expr()->gte('last_completed', $qb->createNamedParameter($since)));
+        $this->addPlatformFilter($qb, $platformIds);
         $r = $qb->executeQuery(); $row = $r->fetch(); $r->closeCursor();
         return (int)($row['cnt'] ?? 0);
     }
 
     /** @return Procedure[] */
-    public function findOverdue(int $limit = 10): array {
+    public function findOverdue(int $limit = 10, array $platformIds = []): array {
         $qb = $this->db->getQueryBuilder();
-        $qb->select('*')->from($this->getTableName())
+        $qb->select($this->getTableName().'.*')->from($this->getTableName())
            ->where($qb->expr()->lt('next_due', $qb->createNamedParameter(date('Y-m-d'))))
            ->orderBy('next_due', 'ASC')
            ->setMaxResults($limit);
+        $this->addPlatformFilter($qb, $platformIds);
         return $this->findEntities($qb);
     }
 
