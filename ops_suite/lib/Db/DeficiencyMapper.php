@@ -67,7 +67,7 @@ class DeficiencyMapper extends QBMapper {
     /** @return Deficiency[] top N open deficiencies ordered by severity */
     public function findCritical(int $limit = 5, array $platformIds = []): array {
         $qb = $this->db->getQueryBuilder();
-        $qb->select($this->getTableName().'.*')->from($this->getTableName())
+        $qb->select('*')->from($this->getTableName())
            ->where($qb->expr()->notIn('status',
                $qb->createNamedParameter(['closed', 'cancelled'], IQueryBuilder::PARAM_STR_ARRAY)))
            ->orderBy('severity', 'ASC')
