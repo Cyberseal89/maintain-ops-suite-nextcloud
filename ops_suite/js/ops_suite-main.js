@@ -67,6 +67,25 @@ var API = {
                   groups:     ()      => req('GET',  '/api/groups') },
   settings:     { get:        ()      => req('GET',  '/api/settings'),
                   save:       d       => req('POST', '/api/settings', d) },
+  supply: {
+                  requests: {
+                    list:       p         => req('GET',    '/api/supply/requests'+qs(p)),
+                    get:        id        => req('GET',    '/api/supply/requests/'+id),
+                    create:     d         => req('POST',   '/api/supply/requests', d),
+                    update:     (id,d)    => req('PUT',    '/api/supply/requests/'+id, d),
+                    destroy:    id        => req('DELETE', '/api/supply/requests/'+id),
+                    addItem:    (id,d)    => req('POST',   '/api/supply/requests/'+id+'/items', d),
+                    updateItem: (id,iid,d)=> req('PUT',    '/api/supply/requests/'+id+'/items/'+iid, d),
+                    deleteItem: (id,iid)  => req('DELETE', '/api/supply/requests/'+id+'/items/'+iid),
+                  },
+                  inventory: {
+                    list:     p       => req('GET',  '/api/supply/inventory'+qs(p)),
+                    get:      id      => req('GET',  '/api/supply/inventory/'+id),
+                    create:   d       => req('POST', '/api/supply/inventory', d),
+                    update:   (id,d)  => req('PUT',  '/api/supply/inventory/'+id, d),
+                    transact: (id,d)  => req('POST', '/api/supply/inventory/'+id+'/transact', d),
+                  },
+                },
   workPackages: {
                   list:       p         => req('GET',    '/api/work-packages'+qs(p)),
                   get:        id        => req('GET',    '/api/work-packages/'+id),
@@ -1802,6 +1821,1078 @@ function showDocForm(modId, existing, onDone) {
   }, isEdit ? 'Save Changes' : 'Add Document');
 }
 
+/* ── Supply / Warehouse ── */
+const SR_STATUSES = [
+  ['draft','Draft'],['submitted','Submitted'],['approved','Approved'],
+  ['ordered','Ordered'],['partially_received','Partially Received'],
+  ['received','Received'],['closed','Closed'],['cancelled','Cancelled']
+];
+const SR_STATUS_COLORS = {
+  draft:'badge-gray', submitted:'badge-blue', approved:'badge-teal',
+  ordered:'badge-orange', partially_received:'badge-orange',
+  received:'badge-green', closed:'badge-green', cancelled:'badge-gray'
+};
+const SR_PRIORITIES = [['routine','Routine'],['urgent','Urgent'],['emergency','Emergency']];
+const INV_CATEGORIES = [['hardware','Hardware'],['software','Software'],['consumable','Consumable'],['tool','Tool'],['other','Other']];
+
+async function viewSupplyRequests() {
+  var wrap = div(''); setContent(wrap);
+  var hdr = div('ops-page-header', [el('h2', {text: '🛒 Supply Requests'})]);
+  hdr.appendChild(btn('primary', '+ New Request', () => showSupplyRequestForm(null, () => viewSupplyRequests())));
+  wrap.appendChild(hdr);
+
+  var loading = span('ops-muted', 'Loading…'); wrap.appendChild(loading);
+  var p = {};
+  if (_selectedPlatformIds.length) p.platform_ids = _selectedPlatformIds.join(',');
+  var requests = await API.supply.requests.list(p).catch(() => []);
+  loading.remove();
+
+  if (!requests.length) {
+    wrap.appendChild(el('p', {cls:'ops-empty', text:'No supply requests yet.'}));
+    return;
+  }
+
+  var card = div('ops-card');
+  card.appendChild(makeTable(
+    ['SRFQ #', 'Title', 'Priority', 'Status', 'Items', 'Est. Total', 'Needed By', ''],
+    requests.map(sr => {
+      var priColor = sr.priority==='emergency'?'badge-red':sr.priority==='urgent'?'badge-orange':'badge-gray';
+      var priB  = span('ops-badge '+priColor, SR_PRIORITIES.find(p=>p[0]===sr.priority)?.[1]||sr.priority);
+      var statB = span('ops-badge '+(SR_STATUS_COLORS[sr.status]||'badge-gray'),
+        SR_STATUSES.find(s=>s[0]===sr.status)?.[1]||sr.status);
+      var viewBtn = btn('ops-btn-sm', '🛒 View', () => navigate('supply-detail', sr.id));
+      var editBtn = btn('ops-btn-sm', '✏', () => showSupplyRequestForm(sr, () => viewSupplyRequests()));
+      var actWrap = div(''); actWrap.style.cssText='display:flex;gap:4px;';
+      actWrap.appendChild(viewBtn); actWrap.appendChild(editBtn);
+      var titleEl = el('strong', {text: sr.title, style:'cursor:pointer;color:#38bdf8;'});
+      titleEl.onclick = () => navigate('supply-detail', sr.id);
+      return [
+        span('ops-mono', sr.rfq_number||'—'),
+        titleEl, priB, statB,
+        span('ops-badge badge-gray', (sr.item_count||0)+' items'),
+        sr.est_total > 0 ? fmt$(sr.est_total) : span('ops-muted','—'),
+        sr.needed_by ? sr.needed_by.slice(0,10) : span('ops-muted','—'),
+        actWrap
+      ];
+    })
+  ));
+  wrap.appendChild(card);
+}
+
+async function viewSupplyRequestDetail(id) {
+  setContent(el('div', {cls:'ops-empty', text:'Loading…'}));
+  var sr = await API.supply.requests.get(id).catch(() => null);
+  if (!sr) return;
+
+  var wrap = div('');
+  var hdr = div('ops-page-header');
+  hdr.appendChild(btn('', '← Supply Requests', () => navigate('supply-requests')));
+  hdr.appendChild(el('h2', {text: sr.title}));
+  hdr.appendChild(span('ops-badge '+(SR_STATUS_COLORS[sr.status]||'badge-gray'),
+    SR_STATUSES.find(s=>s[0]===sr.status)?.[1]||sr.status));
+  var priColor = sr.priority==='emergency'?'badge-red':sr.priority==='urgent'?'badge-orange':'badge-gray';
+  hdr.appendChild(span('ops-badge '+priColor, SR_PRIORITIES.find(p=>p[0]===sr.priority)?.[1]||sr.priority));
+  hdr.appendChild(btn('', '✏ Edit', () => showSupplyRequestForm(sr, () => viewSupplyRequestDetail(id))));
+  hdr.appendChild(btn('primary', '+ Add Item', () => showSupplyItemForm(id, null, () => viewSupplyRequestDetail(id))));
+  hdr.appendChild(btn('success', '📄 Export SRFQ', () => exportSupplyRFQ(sr)));
+  wrap.appendChild(hdr);
+
+  // Info bar
+  var infoBar = div('');
+  infoBar.style.cssText = 'display:flex;gap:20px;padding:12px 0;border-bottom:1px solid #2e3650;margin-bottom:16px;font-size:13px;color:#94a3b8;flex-wrap:wrap;';
+  infoBar.appendChild(el('span', {text: '🔖 ' + (sr.rfq_number||'—')}));
+  if (sr.needed_by) infoBar.appendChild(el('span', {text: '📅 Needed By: ' + sr.needed_by.slice(0,10)}));
+  if (sr.requested_by) infoBar.appendChild(el('span', {text: '👤 Requested By: ' + sr.requested_by}));
+  if (sr.approved_by)  infoBar.appendChild(el('span', {text: '✓ Approved By: ' + sr.approved_by}));
+  if (sr.source_type && sr.source_type !== 'manual') {
+    infoBar.appendChild(el('span', {text: '🔗 From: ' + sr.source_type + ' #' + sr.source_id}));
+  }
+  wrap.appendChild(infoBar);
+
+  var items = sr.items || [];
+  var estTotal = sr.est_total || 0;
+
+  // Cost summary
+  if (estTotal > 0) {
+    var costCard = div('ops-card'); costCard.style.marginBottom = '16px';
+    costCard.appendChild(div('ops-card-header', [el('h3', {text:'Cost Summary'})]));
+    var cg = div('ops-cost-grid');
+    var actTotal = items.reduce((s,i) => s + (i.actual_total||0), 0);
+    [
+      ['Est. Total',    fmt$(estTotal),  'ops-blue'],
+      ['Actual Total',  fmt$(actTotal),  'ops-green'],
+      ['Items',         String(items.length), 'ops-teal'],
+    ].forEach(([l,v,c]) => {
+      var cell = div('ops-cost-cell');
+      cell.appendChild(el('div', {cls:'ops-cost-label', text:l}));
+      cell.appendChild(el('div', {cls:'ops-cost-value '+c, text:String(v)}));
+      cg.appendChild(cell);
+    });
+    costCard.appendChild(cg);
+    wrap.appendChild(costCard);
+  }
+
+  // Items table
+  var tableCard = div('ops-card');
+  tableCard.appendChild(div('ops-card-header', [el('h3', {text:'Line Items ('+items.length+')'})]));
+
+  if (!items.length) {
+    tableCard.appendChild(el('p', {cls:'ops-empty', text:'No items yet. Add parts or materials.'}));
+  } else {
+    tableCard.appendChild(makeTable(
+      ['Item Name', 'Part #', 'Qty Req', 'Qty Rec', 'Unit Cost Est', 'Est Total', 'Vendor', 'Status', ''],
+      items.map(item => {
+        var statB = span('ops-badge '+(item.status==='received'?'badge-green':item.status==='ordered'?'badge-blue':'badge-gray'), item.status);
+        var editBtn = btn('ops-btn-sm', '✏', () => showSupplyItemForm(id, item, () => viewSupplyRequestDetail(id)));
+        var delBtn  = btn('danger ops-btn-sm', '✕', async () => {
+          if (!confirm('Remove this item?')) return;
+          await API.supply.requests.deleteItem(id, item.id);
+          viewSupplyRequestDetail(id);
+        });
+        var actWrap = div(''); actWrap.style.cssText='display:flex;gap:4px;';
+        actWrap.appendChild(editBtn); actWrap.appendChild(delBtn);
+        return [
+          el('strong', {text: item.item_name}),
+          item.part_number ? span('ops-mono ops-small', item.part_number) : span('ops-muted','—'),
+          item.quantity_requested,
+          item.quantity_received || '0',
+          item.unit_cost_est > 0 ? fmt$(item.unit_cost_est) : span('ops-muted','—'),
+          item.est_total > 0 ? fmt$(item.est_total) : span('ops-muted','—'),
+          item.vendor || span('ops-muted','—'),
+          statB, actWrap
+        ];
+      })
+    ));
+  }
+  wrap.appendChild(tableCard);
+  setContent(wrap);
+}
+
+function showSupplyRequestForm(existing, onDone) {
+  var isEdit = !!existing;
+  var body = div('ops-form-grid');
+
+  var titleInp = el('input',{}); titleInp.className='ops-input'; titleInp.placeholder='Request title';
+  if (existing) titleInp.value = existing.title || '';
+  body.appendChild(fg('Title *', titleInp, true));
+
+  var statusSel = sel(SR_STATUSES, existing?.status || 'draft');
+  body.appendChild(fg('Status', statusSel));
+
+  var priSel = sel(SR_PRIORITIES, existing?.priority || 'routine');
+  body.appendChild(fg('Priority', priSel));
+
+  var neededInp = el('input',{}); neededInp.className='ops-input'; neededInp.type='date';
+  if (existing?.needed_by) neededInp.value = existing.needed_by.slice(0,10);
+  body.appendChild(fg('Needed By', neededInp));
+
+  var reqByInp = el('input',{}); reqByInp.className='ops-input'; reqByInp.placeholder='Requested by';
+  if (existing) reqByInp.value = existing.requested_by || '';
+  body.appendChild(fg('Requested By', reqByInp));
+
+  var notesInp = document.createElement('textarea'); notesInp.className='ops-input'; notesInp.rows=2;
+  if (existing) notesInp.value = existing.notes || '';
+  body.appendChild(fg('Notes', notesInp, true));
+
+  modal(isEdit ? 'Edit Supply Request' : 'New Supply Request', body, async () => {
+    if (!titleInp.value.trim()) throw new Error('Title is required.');
+    var data = {
+      title:        titleInp.value.trim(),
+      status:       statusSel.value,
+      priority:     priSel.value,
+      needed_by:    neededInp.value || '',
+      requested_by: reqByInp.value.trim(),
+      notes:        notesInp.value.trim(),
+    };
+    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
+    if (isEdit) await API.supply.requests.update(existing.id, data);
+    else await API.supply.requests.create(data);
+    if (onDone) onDone();
+  }, isEdit ? 'Save Changes' : 'Create Request');
+}
+
+function showSupplyItemForm(requestId, existing, onDone) {
+  var isEdit = !!existing;
+  var body = div('ops-form-grid');
+
+  var nameInp = el('input',{}); nameInp.className='ops-input'; nameInp.placeholder='Item name (required)';
+  if (existing) nameInp.value = existing.item_name || '';
+  body.appendChild(fg('Item Name *', nameInp, true));
+
+  var partInp = el('input',{}); partInp.className='ops-input'; partInp.placeholder='Part number / NSN';
+  if (existing) partInp.value = existing.part_number || '';
+  body.appendChild(fg('Part Number', partInp));
+
+  var descInp = document.createElement('textarea'); descInp.className='ops-input'; descInp.rows=2;
+  descInp.placeholder='Description';
+  if (existing) descInp.value = existing.description || '';
+  body.appendChild(fg('Description', descInp, true));
+
+  var qtyInp = el('input',{}); qtyInp.className='ops-input'; qtyInp.type='number'; qtyInp.placeholder='1';
+  if (existing) qtyInp.value = existing.quantity_requested || '1';
+  body.appendChild(fg('Quantity', qtyInp));
+
+  var unitCostInp = el('input',{}); unitCostInp.className='ops-input'; unitCostInp.type='number'; unitCostInp.placeholder='0.00';
+  if (existing) unitCostInp.value = existing.unit_cost_est || '';
+  body.appendChild(fg('Est. Unit Cost ($)', unitCostInp));
+
+  var vendorInp = el('input',{}); vendorInp.className='ops-input'; vendorInp.placeholder='Preferred vendor';
+  if (existing) vendorInp.value = existing.vendor || '';
+  body.appendChild(fg('Vendor', vendorInp));
+
+  if (isEdit) {
+    var qtyRecInp = el('input',{}); qtyRecInp.className='ops-input'; qtyRecInp.type='number'; qtyRecInp.placeholder='0';
+    qtyRecInp.value = existing.quantity_received || '0';
+    body.appendChild(fg('Qty Received', qtyRecInp));
+
+    var unitActInp = el('input',{}); unitActInp.className='ops-input'; unitActInp.type='number'; unitActInp.placeholder='0.00';
+    unitActInp.value = existing.unit_cost_actual || '';
+    body.appendChild(fg('Actual Unit Cost ($)', unitActInp));
+
+    var itemStatSel = sel([['pending','Pending'],['ordered','Ordered'],['received','Received'],['cancelled','Cancelled']], existing.status||'pending');
+    body.appendChild(fg('Status', itemStatSel));
+  }
+
+  var notesInp2 = el('input',{}); notesInp2.className='ops-input'; notesInp2.placeholder='Notes';
+  if (existing) notesInp2.value = existing.notes || '';
+  body.appendChild(fg('Notes', notesInp2));
+
+  modal(isEdit ? 'Edit Line Item' : 'Add Line Item', body, async () => {
+    if (!nameInp.value.trim()) throw new Error('Item name is required.');
+    var data = {
+      item_name:          nameInp.value.trim(),
+      part_number:        partInp.value.trim(),
+      description:        descInp.value.trim(),
+      quantity_requested: parseFloat(qtyInp.value) || 1,
+      unit_cost_est:      parseFloat(unitCostInp.value) || 0,
+      vendor:             vendorInp.value.trim(),
+      notes:              notesInp2.value.trim(),
+    };
+    if (isEdit) {
+      data.quantity_received = parseFloat(qtyRecInp.value) || 0;
+      data.unit_cost_actual  = parseFloat(unitActInp.value) || 0;
+      data.status = itemStatSel.value;
+      await API.supply.requests.updateItem(requestId, existing.id, data);
+    } else {
+      await API.supply.requests.addItem(requestId, data);
+    }
+    if (onDone) onDone();
+  }, isEdit ? 'Save Changes' : 'Add Item');
+}
+
+function exportSupplyRFQ(sr) {
+  var items = sr.items || [];
+  var today = new Date().toLocaleDateString('en-US', {year:'numeric',month:'long',day:'numeric'});
+  var grandEst = items.reduce((s,i) => s+(i.est_total||0), 0);
+
+  var html = `<!DOCTYPE html>
+<html>
+<head>
+<title>SRFQ ${sr.rfq_number}</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; color: #333; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  h2 { font-size: 16px; color: #555; border-bottom: 2px solid #333; padding-bottom: 6px; margin-top: 28px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+  .rfq-meta { text-align: right; font-size: 13px; color: #555; }
+  .rfq-meta strong { font-size: 18px; color: #333; display: block; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  th { background: #f5f5f5; padding: 8px; text-align: left; border: 1px solid #ddd; font-weight: 700; }
+  td { padding: 8px; border: 1px solid #ddd; }
+  tr:nth-child(even) { background: #fafafa; }
+  .total-row { font-weight: 700; background: #f0f0f0; }
+  .sig-block { margin-top: 48px; display: flex; gap: 40px; }
+  .sig-line { flex: 1; border-top: 1px solid #333; padding-top: 6px; font-size: 12px; color: #555; }
+  .footer { margin-top: 40px; font-size: 11px; color: #999; border-top: 1px solid #ddd; padding-top: 12px; }
+  @media print { body { margin: 20px; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>Supply Request for Quote</h1>
+    <div style="font-size:14px;color:#555;">Alto Technologies LLC</div>
+  </div>
+  <div class="rfq-meta">
+    <strong>${sr.rfq_number}</strong>
+    Date Issued: ${today}<br>
+    ${sr.needed_by ? 'Needed By: ' + sr.needed_by.slice(0,10) : ''}
+  </div>
+</div>
+
+<h2>Request Information</h2>
+<table>
+  <tr><th style="width:30%">Request Title</th><td>${sr.title}</td></tr>
+  <tr><th>Priority</th><td>${sr.priority.charAt(0).toUpperCase()+sr.priority.slice(1)}</td></tr>
+  <tr><th>Requested By</th><td>${sr.requested_by||'—'}</td></tr>
+  <tr><th>Approved By</th><td>${sr.approved_by||'—'}</td></tr>
+  ${sr.notes ? '<tr><th>Notes</th><td>'+sr.notes+'</td></tr>' : ''}
+</table>
+
+<h2>Line Items</h2>
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Item Name</th>
+      <th>Part Number</th>
+      <th>Description</th>
+      <th>Qty</th>
+      <th>Est. Unit Cost</th>
+      <th>Est. Total</th>
+      <th>Preferred Vendor</th>
+    </tr>
+  </thead>
+  <tbody>`;
+
+  items.forEach((item, idx) => {
+    html += `<tr>
+      <td>${idx+1}</td>
+      <td>${item.item_name}</td>
+      <td>${item.part_number||'—'}</td>
+      <td>${item.description||'—'}</td>
+      <td>${item.quantity_requested}</td>
+      <td>${item.unit_cost_est>0?'$'+Number(item.unit_cost_est).toFixed(2):'—'}</td>
+      <td>${item.est_total>0?'$'+Number(item.est_total).toFixed(2):'—'}</td>
+      <td>${item.vendor||'—'}</td>
+    </tr>`;
+  });
+
+  html += `<tr class="total-row">
+    <td colspan="6" style="text-align:right;">ESTIMATED TOTAL</td>
+    <td colspan="2">$${grandEst.toFixed(2)}</td>
+  </tr>
+  </tbody>
+</table>
+
+<h2>Delivery Requirements</h2>
+<p style="font-size:13px;line-height:1.6;color:#555;">
+All items shall be delivered to the requesting organization by ${sr.needed_by?sr.needed_by.slice(0,10):'the date specified upon award'}.
+Vendor shall confirm availability and lead times with their quote response.
+</p>
+
+<h2>Terms & Conditions</h2>
+<p style="font-size:12px;line-height:1.6;color:#555;">
+Vendors are requested to provide firm fixed pricing for all line items listed above.
+Quotes must be valid for 30 days from date of submission. Partial quotes are acceptable — 
+please clearly indicate any items that cannot be supplied. The requesting organization 
+reserves the right to accept or reject any or all quotes.
+</p>
+
+<div class="sig-block">
+  <div class="sig-line">Requested By: ${sr.requested_by||'_______________'}<br>Date: ${today}</div>
+  <div class="sig-line">Approved By: ${sr.approved_by||'_______________'}<br>Date: _______________</div>
+  <div class="sig-line">Vendor Quote By: _______________<br>Date: _______________</div>
+</div>
+
+<div class="footer">
+  ${sr.rfq_number} | Generated by Maintain Ops Suite | Alto Technologies LLC | ${today}
+</div>
+</body>
+</html>`;
+
+  var win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
+}
+
+async function viewInventory() {
+  var wrap = div(''); setContent(wrap);
+  var hdr = div('ops-page-header', [el('h2', {text: '🗄 Inventory'})]); 
+  hdr.appendChild(btn('primary', '+ Add Item', () => showInventoryForm(null, () => viewInventory())));
+  wrap.appendChild(hdr);
+
+  var loading = span('ops-muted', 'Loading…'); wrap.appendChild(loading);
+  var p = {};
+  if (_selectedPlatformIds.length) p.platform_ids = _selectedPlatformIds.join(',');
+  var items = await API.supply.inventory.list(p).catch(() => []);
+  loading.remove();
+
+  // Low stock warning
+  var lowStock = items.filter(i => i.below_reorder);
+  if (lowStock.length) {
+    var warn = div('');
+    warn.style.cssText = 'background:rgba(245,158,11,0.1);border:1px solid #d97706;border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#fbbf24;font-size:13px;';
+    warn.textContent = '⚠ ' + lowStock.length + ' item(s) below reorder point: ' + lowStock.map(i=>i.item_name).join(', ');
+    wrap.appendChild(warn);
+  }
+
+  if (!items.length) {
+    wrap.appendChild(el('p', {cls:'ops-empty', text:'No inventory items yet.'}));
+    return;
+  }
+
+  var card = div('ops-card');
+  card.appendChild(makeTable(
+    ['Item Name', 'Part #', 'Category', 'On Hand', 'Available', 'Reorder At', 'Location', 'Unit Cost', ''],
+    items.map(item => {
+      var onHandEl = el('strong', {text: String(item.quantity_on_hand)});
+      if (item.below_reorder) onHandEl.style.color = '#f59e0b';
+      var editBtn = btn('ops-btn-sm', '✏', () => showInventoryForm(item, () => viewInventory()));
+      var txBtn   = btn('ops-btn-sm', '±', () => showTransactionForm(item, () => viewInventory()));
+      var actWrap = div(''); actWrap.style.cssText='display:flex;gap:4px;';
+      actWrap.appendChild(txBtn); actWrap.appendChild(editBtn);
+      return [
+        el('strong', {text: item.item_name, style:'cursor:pointer;color:#38bdf8;'}),
+        item.part_number ? span('ops-mono ops-small', item.part_number) : span('ops-muted','—'),
+        span('ops-badge badge-gray', item.category),
+        onHandEl,
+        String(item.quantity_available),
+        item.reorder_point > 0 ? String(item.reorder_point) : span('ops-muted','—'),
+        item.location || span('ops-muted','—'),
+        item.unit_cost > 0 ? fmt$(item.unit_cost) : span('ops-muted','—'),
+        actWrap
+      ];
+    })
+  ));
+  wrap.appendChild(card);
+}
+
+function showInventoryForm(existing, onDone) {
+  var isEdit = !!existing;
+  var body = div('ops-form-grid');
+
+  var nameInp = el('input',{}); nameInp.className='ops-input'; nameInp.placeholder='Item name (required)';
+  if (existing) nameInp.value = existing.item_name || '';
+  body.appendChild(fg('Item Name *', nameInp, true));
+
+  var partInp = el('input',{}); partInp.className='ops-input'; partInp.placeholder='Part number / NSN';
+  if (existing) partInp.value = existing.part_number || '';
+  body.appendChild(fg('Part Number', partInp));
+
+  var catSel = sel(INV_CATEGORIES, existing?.category || 'other');
+  body.appendChild(fg('Category', catSel));
+
+  var descInp = document.createElement('textarea'); descInp.className='ops-input'; descInp.rows=2;
+  if (existing) descInp.value = existing.description || '';
+  body.appendChild(fg('Description', descInp, true));
+
+  if (!isEdit) {
+    var qtyInp = el('input',{}); qtyInp.className='ops-input'; qtyInp.type='number'; qtyInp.placeholder='0';
+    body.appendChild(fg('Initial Quantity', qtyInp));
+  }
+
+  var reorderInp = el('input',{}); reorderInp.className='ops-input'; reorderInp.type='number'; reorderInp.placeholder='0';
+  if (existing) reorderInp.value = existing.reorder_point || '';
+  body.appendChild(fg('Reorder Point', reorderInp));
+
+  var unitCostInp = el('input',{}); unitCostInp.className='ops-input'; unitCostInp.type='number'; unitCostInp.placeholder='0.00';
+  if (existing) unitCostInp.value = existing.unit_cost || '';
+  body.appendChild(fg('Unit Cost ($)', unitCostInp));
+
+  var locInp = el('input',{}); locInp.className='ops-input'; locInp.placeholder='Shelf / bin location';
+  if (existing) locInp.value = existing.location || '';
+  body.appendChild(fg('Location', locInp));
+
+  var vendorInp = el('input',{}); vendorInp.className='ops-input'; vendorInp.placeholder='Preferred vendor';
+  if (existing) vendorInp.value = existing.vendor || '';
+  body.appendChild(fg('Vendor', vendorInp));
+
+  var leadInp = el('input',{}); leadInp.className='ops-input'; leadInp.type='number'; leadInp.placeholder='0';
+  if (existing) leadInp.value = existing.lead_time_days || '';
+  body.appendChild(fg('Lead Time (days)', leadInp));
+
+  modal(isEdit ? 'Edit Inventory Item' : 'Add Inventory Item', body, async () => {
+    if (!nameInp.value.trim()) throw new Error('Item name is required.');
+    var data = {
+      item_name:      nameInp.value.trim(),
+      part_number:    partInp.value.trim(),
+      category:       catSel.value,
+      description:    descInp.value.trim(),
+      reorder_point:  parseFloat(reorderInp.value) || 0,
+      unit_cost:      parseFloat(unitCostInp.value) || 0,
+      location:       locInp.value.trim(),
+      vendor:         vendorInp.value.trim(),
+      lead_time_days: parseInt(leadInp.value) || 0,
+    };
+    if (!isEdit) data.quantity_on_hand = parseFloat(qtyInp.value) || 0;
+    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
+    if (isEdit) await API.supply.inventory.update(existing.id, data);
+    else await API.supply.inventory.create(data);
+    if (onDone) onDone();
+  }, isEdit ? 'Save Changes' : 'Add Item');
+}
+
+function showTransactionForm(item, onDone) {
+  var body = div('ops-form-grid');
+
+  var typeSel = sel([
+    ['receive','Receive — Add stock'],
+    ['issue','Issue — Remove stock to technician'],
+    ['return','Return — Return unused stock'],
+    ['adjust','Adjust — Set absolute quantity']
+  ], 'receive');
+  body.appendChild(fg('Transaction Type', typeSel));
+
+  var qtyInp = el('input',{}); qtyInp.className='ops-input'; qtyInp.type='number'; qtyInp.placeholder='Quantity';
+  body.appendChild(fg('Quantity', qtyInp));
+
+  var notesInp = el('input',{}); notesInp.className='ops-input'; notesInp.placeholder='Notes (e.g. issued to Tech Smith)';
+  body.appendChild(fg('Notes', notesInp));
+
+  // Current stock info
+  var info = div('');
+  info.style.cssText = 'background:#0f172a;border-radius:8px;padding:12px;font-size:13px;color:#94a3b8;margin-bottom:8px;';
+  info.textContent = 'Current stock: ' + item.quantity_on_hand + ' | Available: ' + item.quantity_available;
+  body.insertBefore(info, body.firstChild);
+
+  modal('Stock Transaction — ' + item.item_name, body, async () => {
+    var qty = parseFloat(qtyInp.value);
+    if (!qty || qty <= 0) throw new Error('Quantity must be greater than 0.');
+    await API.supply.inventory.transact(item.id, {
+      transaction_type: typeSel.value,
+      quantity:         qty,
+      notes:            notesInp.value.trim(),
+    });
+    if (onDone) onDone();
+  }, 'Submit Transaction');
+}
+
+async function viewInventoryDetail(id) {
+  setContent(el('div', {cls:'ops-empty', text:'Loading…'}));
+  var item = await API.supply.inventory.get(id).catch(() => null);
+  if (!item) return;
+  // For now navigate back to inventory — detail view TBD
+  navigate('inventory');
+}
+
+/* ── Supply / Warehouse ── */
+const SR_STATUSES = [
+  ['draft','Draft'],['submitted','Submitted'],['approved','Approved'],
+  ['ordered','Ordered'],['partially_received','Partially Received'],
+  ['received','Received'],['closed','Closed'],['cancelled','Cancelled']
+];
+const SR_STATUS_COLORS = {
+  draft:'badge-gray', submitted:'badge-blue', approved:'badge-teal',
+  ordered:'badge-orange', partially_received:'badge-orange',
+  received:'badge-green', closed:'badge-green', cancelled:'badge-gray'
+};
+const SR_PRIORITIES = [['routine','Routine'],['urgent','Urgent'],['emergency','Emergency']];
+const INV_CATEGORIES = [['hardware','Hardware'],['software','Software'],['consumable','Consumable'],['tool','Tool'],['other','Other']];
+
+async function viewSupplyRequests() {
+  var wrap = div(''); setContent(wrap);
+  var hdr = div('ops-page-header', [el('h2', {text: '🛒 Supply Requests'})]);
+  hdr.appendChild(btn('primary', '+ New Request', () => showSupplyRequestForm(null, () => viewSupplyRequests())));
+  wrap.appendChild(hdr);
+
+  var loading = span('ops-muted', 'Loading…'); wrap.appendChild(loading);
+  var p = {};
+  if (_selectedPlatformIds.length) p.platform_ids = _selectedPlatformIds.join(',');
+  var requests = await API.supply.requests.list(p).catch(() => []);
+  loading.remove();
+
+  if (!requests.length) {
+    wrap.appendChild(el('p', {cls:'ops-empty', text:'No supply requests yet.'}));
+    return;
+  }
+
+  var card = div('ops-card');
+  card.appendChild(makeTable(
+    ['SRFQ #', 'Title', 'Priority', 'Status', 'Items', 'Est. Total', 'Needed By', ''],
+    requests.map(sr => {
+      var priColor = sr.priority==='emergency'?'badge-red':sr.priority==='urgent'?'badge-orange':'badge-gray';
+      var priB  = span('ops-badge '+priColor, SR_PRIORITIES.find(p=>p[0]===sr.priority)?.[1]||sr.priority);
+      var statB = span('ops-badge '+(SR_STATUS_COLORS[sr.status]||'badge-gray'),
+        SR_STATUSES.find(s=>s[0]===sr.status)?.[1]||sr.status);
+      var viewBtn = btn('ops-btn-sm', '🛒 View', () => navigate('supply-detail', sr.id));
+      var editBtn = btn('ops-btn-sm', '✏', () => showSupplyRequestForm(sr, () => viewSupplyRequests()));
+      var actWrap = div(''); actWrap.style.cssText='display:flex;gap:4px;';
+      actWrap.appendChild(viewBtn); actWrap.appendChild(editBtn);
+      var titleEl = el('strong', {text: sr.title, style:'cursor:pointer;color:#38bdf8;'});
+      titleEl.onclick = () => navigate('supply-detail', sr.id);
+      return [
+        span('ops-mono', sr.rfq_number||'—'),
+        titleEl, priB, statB,
+        span('ops-badge badge-gray', (sr.item_count||0)+' items'),
+        sr.est_total > 0 ? fmt$(sr.est_total) : span('ops-muted','—'),
+        sr.needed_by ? sr.needed_by.slice(0,10) : span('ops-muted','—'),
+        actWrap
+      ];
+    })
+  ));
+  wrap.appendChild(card);
+}
+
+async function viewSupplyRequestDetail(id) {
+  setContent(el('div', {cls:'ops-empty', text:'Loading…'}));
+  var sr = await API.supply.requests.get(id).catch(() => null);
+  if (!sr) return;
+
+  var wrap = div('');
+  var hdr = div('ops-page-header');
+  hdr.appendChild(btn('', '← Supply Requests', () => navigate('supply-requests')));
+  hdr.appendChild(el('h2', {text: sr.title}));
+  hdr.appendChild(span('ops-badge '+(SR_STATUS_COLORS[sr.status]||'badge-gray'),
+    SR_STATUSES.find(s=>s[0]===sr.status)?.[1]||sr.status));
+  var priColor = sr.priority==='emergency'?'badge-red':sr.priority==='urgent'?'badge-orange':'badge-gray';
+  hdr.appendChild(span('ops-badge '+priColor, SR_PRIORITIES.find(p=>p[0]===sr.priority)?.[1]||sr.priority));
+  hdr.appendChild(btn('', '✏ Edit', () => showSupplyRequestForm(sr, () => viewSupplyRequestDetail(id))));
+  hdr.appendChild(btn('primary', '+ Add Item', () => showSupplyItemForm(id, null, () => viewSupplyRequestDetail(id))));
+  hdr.appendChild(btn('success', '📄 Export SRFQ', () => exportSupplyRFQ(sr)));
+  wrap.appendChild(hdr);
+
+  // Info bar
+  var infoBar = div('');
+  infoBar.style.cssText = 'display:flex;gap:20px;padding:12px 0;border-bottom:1px solid #2e3650;margin-bottom:16px;font-size:13px;color:#94a3b8;flex-wrap:wrap;';
+  infoBar.appendChild(el('span', {text: '🔖 ' + (sr.rfq_number||'—')}));
+  if (sr.needed_by) infoBar.appendChild(el('span', {text: '📅 Needed By: ' + sr.needed_by.slice(0,10)}));
+  if (sr.requested_by) infoBar.appendChild(el('span', {text: '👤 Requested By: ' + sr.requested_by}));
+  if (sr.approved_by)  infoBar.appendChild(el('span', {text: '✓ Approved By: ' + sr.approved_by}));
+  if (sr.source_type && sr.source_type !== 'manual') {
+    infoBar.appendChild(el('span', {text: '🔗 From: ' + sr.source_type + ' #' + sr.source_id}));
+  }
+  wrap.appendChild(infoBar);
+
+  var items = sr.items || [];
+  var estTotal = sr.est_total || 0;
+
+  // Cost summary
+  if (estTotal > 0) {
+    var costCard = div('ops-card'); costCard.style.marginBottom = '16px';
+    costCard.appendChild(div('ops-card-header', [el('h3', {text:'Cost Summary'})]));
+    var cg = div('ops-cost-grid');
+    var actTotal = items.reduce((s,i) => s + (i.actual_total||0), 0);
+    [
+      ['Est. Total',    fmt$(estTotal),  'ops-blue'],
+      ['Actual Total',  fmt$(actTotal),  'ops-green'],
+      ['Items',         String(items.length), 'ops-teal'],
+    ].forEach(([l,v,c]) => {
+      var cell = div('ops-cost-cell');
+      cell.appendChild(el('div', {cls:'ops-cost-label', text:l}));
+      cell.appendChild(el('div', {cls:'ops-cost-value '+c, text:String(v)}));
+      cg.appendChild(cell);
+    });
+    costCard.appendChild(cg);
+    wrap.appendChild(costCard);
+  }
+
+  // Items table
+  var tableCard = div('ops-card');
+  tableCard.appendChild(div('ops-card-header', [el('h3', {text:'Line Items ('+items.length+')'})]));
+
+  if (!items.length) {
+    tableCard.appendChild(el('p', {cls:'ops-empty', text:'No items yet. Add parts or materials.'}));
+  } else {
+    tableCard.appendChild(makeTable(
+      ['Item Name', 'Part #', 'Qty Req', 'Qty Rec', 'Unit Cost Est', 'Est Total', 'Vendor', 'Status', ''],
+      items.map(item => {
+        var statB = span('ops-badge '+(item.status==='received'?'badge-green':item.status==='ordered'?'badge-blue':'badge-gray'), item.status);
+        var editBtn = btn('ops-btn-sm', '✏', () => showSupplyItemForm(id, item, () => viewSupplyRequestDetail(id)));
+        var delBtn  = btn('danger ops-btn-sm', '✕', async () => {
+          if (!confirm('Remove this item?')) return;
+          await API.supply.requests.deleteItem(id, item.id);
+          viewSupplyRequestDetail(id);
+        });
+        var actWrap = div(''); actWrap.style.cssText='display:flex;gap:4px;';
+        actWrap.appendChild(editBtn); actWrap.appendChild(delBtn);
+        return [
+          el('strong', {text: item.item_name}),
+          item.part_number ? span('ops-mono ops-small', item.part_number) : span('ops-muted','—'),
+          item.quantity_requested,
+          item.quantity_received || '0',
+          item.unit_cost_est > 0 ? fmt$(item.unit_cost_est) : span('ops-muted','—'),
+          item.est_total > 0 ? fmt$(item.est_total) : span('ops-muted','—'),
+          item.vendor || span('ops-muted','—'),
+          statB, actWrap
+        ];
+      })
+    ));
+  }
+  wrap.appendChild(tableCard);
+  setContent(wrap);
+}
+
+function showSupplyRequestForm(existing, onDone) {
+  var isEdit = !!existing;
+  var body = div('ops-form-grid');
+
+  var titleInp = el('input',{}); titleInp.className='ops-input'; titleInp.placeholder='Request title';
+  if (existing) titleInp.value = existing.title || '';
+  body.appendChild(fg('Title *', titleInp, true));
+
+  var statusSel = sel(SR_STATUSES, existing?.status || 'draft');
+  body.appendChild(fg('Status', statusSel));
+
+  var priSel = sel(SR_PRIORITIES, existing?.priority || 'routine');
+  body.appendChild(fg('Priority', priSel));
+
+  var neededInp = el('input',{}); neededInp.className='ops-input'; neededInp.type='date';
+  if (existing?.needed_by) neededInp.value = existing.needed_by.slice(0,10);
+  body.appendChild(fg('Needed By', neededInp));
+
+  var reqByInp = el('input',{}); reqByInp.className='ops-input'; reqByInp.placeholder='Requested by';
+  if (existing) reqByInp.value = existing.requested_by || '';
+  body.appendChild(fg('Requested By', reqByInp));
+
+  var notesInp = document.createElement('textarea'); notesInp.className='ops-input'; notesInp.rows=2;
+  if (existing) notesInp.value = existing.notes || '';
+  body.appendChild(fg('Notes', notesInp, true));
+
+  modal(isEdit ? 'Edit Supply Request' : 'New Supply Request', body, async () => {
+    if (!titleInp.value.trim()) throw new Error('Title is required.');
+    var data = {
+      title:        titleInp.value.trim(),
+      status:       statusSel.value,
+      priority:     priSel.value,
+      needed_by:    neededInp.value || '',
+      requested_by: reqByInp.value.trim(),
+      notes:        notesInp.value.trim(),
+    };
+    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
+    if (isEdit) await API.supply.requests.update(existing.id, data);
+    else await API.supply.requests.create(data);
+    if (onDone) onDone();
+  }, isEdit ? 'Save Changes' : 'Create Request');
+}
+
+function showSupplyItemForm(requestId, existing, onDone) {
+  var isEdit = !!existing;
+  var body = div('ops-form-grid');
+
+  var nameInp = el('input',{}); nameInp.className='ops-input'; nameInp.placeholder='Item name (required)';
+  if (existing) nameInp.value = existing.item_name || '';
+  body.appendChild(fg('Item Name *', nameInp, true));
+
+  var partInp = el('input',{}); partInp.className='ops-input'; partInp.placeholder='Part number / NSN';
+  if (existing) partInp.value = existing.part_number || '';
+  body.appendChild(fg('Part Number', partInp));
+
+  var descInp = document.createElement('textarea'); descInp.className='ops-input'; descInp.rows=2;
+  descInp.placeholder='Description';
+  if (existing) descInp.value = existing.description || '';
+  body.appendChild(fg('Description', descInp, true));
+
+  var qtyInp = el('input',{}); qtyInp.className='ops-input'; qtyInp.type='number'; qtyInp.placeholder='1';
+  if (existing) qtyInp.value = existing.quantity_requested || '1';
+  body.appendChild(fg('Quantity', qtyInp));
+
+  var unitCostInp = el('input',{}); unitCostInp.className='ops-input'; unitCostInp.type='number'; unitCostInp.placeholder='0.00';
+  if (existing) unitCostInp.value = existing.unit_cost_est || '';
+  body.appendChild(fg('Est. Unit Cost ($)', unitCostInp));
+
+  var vendorInp = el('input',{}); vendorInp.className='ops-input'; vendorInp.placeholder='Preferred vendor';
+  if (existing) vendorInp.value = existing.vendor || '';
+  body.appendChild(fg('Vendor', vendorInp));
+
+  if (isEdit) {
+    var qtyRecInp = el('input',{}); qtyRecInp.className='ops-input'; qtyRecInp.type='number'; qtyRecInp.placeholder='0';
+    qtyRecInp.value = existing.quantity_received || '0';
+    body.appendChild(fg('Qty Received', qtyRecInp));
+
+    var unitActInp = el('input',{}); unitActInp.className='ops-input'; unitActInp.type='number'; unitActInp.placeholder='0.00';
+    unitActInp.value = existing.unit_cost_actual || '';
+    body.appendChild(fg('Actual Unit Cost ($)', unitActInp));
+
+    var itemStatSel = sel([['pending','Pending'],['ordered','Ordered'],['received','Received'],['cancelled','Cancelled']], existing.status||'pending');
+    body.appendChild(fg('Status', itemStatSel));
+  }
+
+  var notesInp2 = el('input',{}); notesInp2.className='ops-input'; notesInp2.placeholder='Notes';
+  if (existing) notesInp2.value = existing.notes || '';
+  body.appendChild(fg('Notes', notesInp2));
+
+  modal(isEdit ? 'Edit Line Item' : 'Add Line Item', body, async () => {
+    if (!nameInp.value.trim()) throw new Error('Item name is required.');
+    var data = {
+      item_name:          nameInp.value.trim(),
+      part_number:        partInp.value.trim(),
+      description:        descInp.value.trim(),
+      quantity_requested: parseFloat(qtyInp.value) || 1,
+      unit_cost_est:      parseFloat(unitCostInp.value) || 0,
+      vendor:             vendorInp.value.trim(),
+      notes:              notesInp2.value.trim(),
+    };
+    if (isEdit) {
+      data.quantity_received = parseFloat(qtyRecInp.value) || 0;
+      data.unit_cost_actual  = parseFloat(unitActInp.value) || 0;
+      data.status = itemStatSel.value;
+      await API.supply.requests.updateItem(requestId, existing.id, data);
+    } else {
+      await API.supply.requests.addItem(requestId, data);
+    }
+    if (onDone) onDone();
+  }, isEdit ? 'Save Changes' : 'Add Item');
+}
+
+function exportSupplyRFQ(sr) {
+  var items = sr.items || [];
+  var today = new Date().toLocaleDateString('en-US', {year:'numeric',month:'long',day:'numeric'});
+  var grandEst = items.reduce((s,i) => s+(i.est_total||0), 0);
+
+  var html = `<!DOCTYPE html>
+<html>
+<head>
+<title>SRFQ ${sr.rfq_number}</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; color: #333; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  h2 { font-size: 16px; color: #555; border-bottom: 2px solid #333; padding-bottom: 6px; margin-top: 28px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+  .rfq-meta { text-align: right; font-size: 13px; color: #555; }
+  .rfq-meta strong { font-size: 18px; color: #333; display: block; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  th { background: #f5f5f5; padding: 8px; text-align: left; border: 1px solid #ddd; font-weight: 700; }
+  td { padding: 8px; border: 1px solid #ddd; }
+  tr:nth-child(even) { background: #fafafa; }
+  .total-row { font-weight: 700; background: #f0f0f0; }
+  .sig-block { margin-top: 48px; display: flex; gap: 40px; }
+  .sig-line { flex: 1; border-top: 1px solid #333; padding-top: 6px; font-size: 12px; color: #555; }
+  .footer { margin-top: 40px; font-size: 11px; color: #999; border-top: 1px solid #ddd; padding-top: 12px; }
+  @media print { body { margin: 20px; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>Supply Request for Quote</h1>
+    <div style="font-size:14px;color:#555;">Alto Technologies LLC</div>
+  </div>
+  <div class="rfq-meta">
+    <strong>${sr.rfq_number}</strong>
+    Date Issued: ${today}<br>
+    ${sr.needed_by ? 'Needed By: ' + sr.needed_by.slice(0,10) : ''}
+  </div>
+</div>
+
+<h2>Request Information</h2>
+<table>
+  <tr><th style="width:30%">Request Title</th><td>${sr.title}</td></tr>
+  <tr><th>Priority</th><td>${sr.priority.charAt(0).toUpperCase()+sr.priority.slice(1)}</td></tr>
+  <tr><th>Requested By</th><td>${sr.requested_by||'—'}</td></tr>
+  <tr><th>Approved By</th><td>${sr.approved_by||'—'}</td></tr>
+  ${sr.notes ? '<tr><th>Notes</th><td>'+sr.notes+'</td></tr>' : ''}
+</table>
+
+<h2>Line Items</h2>
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Item Name</th>
+      <th>Part Number</th>
+      <th>Description</th>
+      <th>Qty</th>
+      <th>Est. Unit Cost</th>
+      <th>Est. Total</th>
+      <th>Preferred Vendor</th>
+    </tr>
+  </thead>
+  <tbody>`;
+
+  items.forEach((item, idx) => {
+    html += `<tr>
+      <td>${idx+1}</td>
+      <td>${item.item_name}</td>
+      <td>${item.part_number||'—'}</td>
+      <td>${item.description||'—'}</td>
+      <td>${item.quantity_requested}</td>
+      <td>${item.unit_cost_est>0?'$'+Number(item.unit_cost_est).toFixed(2):'—'}</td>
+      <td>${item.est_total>0?'$'+Number(item.est_total).toFixed(2):'—'}</td>
+      <td>${item.vendor||'—'}</td>
+    </tr>`;
+  });
+
+  html += `<tr class="total-row">
+    <td colspan="6" style="text-align:right;">ESTIMATED TOTAL</td>
+    <td colspan="2">$${grandEst.toFixed(2)}</td>
+  </tr>
+  </tbody>
+</table>
+
+<h2>Delivery Requirements</h2>
+<p style="font-size:13px;line-height:1.6;color:#555;">
+All items shall be delivered to the requesting organization by ${sr.needed_by?sr.needed_by.slice(0,10):'the date specified upon award'}.
+Vendor shall confirm availability and lead times with their quote response.
+</p>
+
+<h2>Terms & Conditions</h2>
+<p style="font-size:12px;line-height:1.6;color:#555;">
+Vendors are requested to provide firm fixed pricing for all line items listed above.
+Quotes must be valid for 30 days from date of submission. Partial quotes are acceptable — 
+please clearly indicate any items that cannot be supplied. The requesting organization 
+reserves the right to accept or reject any or all quotes.
+</p>
+
+<div class="sig-block">
+  <div class="sig-line">Requested By: ${sr.requested_by||'_______________'}<br>Date: ${today}</div>
+  <div class="sig-line">Approved By: ${sr.approved_by||'_______________'}<br>Date: _______________</div>
+  <div class="sig-line">Vendor Quote By: _______________<br>Date: _______________</div>
+</div>
+
+<div class="footer">
+  ${sr.rfq_number} | Generated by Maintain Ops Suite | Alto Technologies LLC | ${today}
+</div>
+</body>
+</html>`;
+
+  var win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
+}
+
+async function viewInventory() {
+  var wrap = div(''); setContent(wrap);
+  var hdr = div('ops-page-header', [el('h2', {text: '🗄 Inventory'})]); 
+  hdr.appendChild(btn('primary', '+ Add Item', () => showInventoryForm(null, () => viewInventory())));
+  wrap.appendChild(hdr);
+
+  var loading = span('ops-muted', 'Loading…'); wrap.appendChild(loading);
+  var p = {};
+  if (_selectedPlatformIds.length) p.platform_ids = _selectedPlatformIds.join(',');
+  var items = await API.supply.inventory.list(p).catch(() => []);
+  loading.remove();
+
+  // Low stock warning
+  var lowStock = items.filter(i => i.below_reorder);
+  if (lowStock.length) {
+    var warn = div('');
+    warn.style.cssText = 'background:rgba(245,158,11,0.1);border:1px solid #d97706;border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#fbbf24;font-size:13px;';
+    warn.textContent = '⚠ ' + lowStock.length + ' item(s) below reorder point: ' + lowStock.map(i=>i.item_name).join(', ');
+    wrap.appendChild(warn);
+  }
+
+  if (!items.length) {
+    wrap.appendChild(el('p', {cls:'ops-empty', text:'No inventory items yet.'}));
+    return;
+  }
+
+  var card = div('ops-card');
+  card.appendChild(makeTable(
+    ['Item Name', 'Part #', 'Category', 'On Hand', 'Available', 'Reorder At', 'Location', 'Unit Cost', ''],
+    items.map(item => {
+      var onHandEl = el('strong', {text: String(item.quantity_on_hand)});
+      if (item.below_reorder) onHandEl.style.color = '#f59e0b';
+      var editBtn = btn('ops-btn-sm', '✏', () => showInventoryForm(item, () => viewInventory()));
+      var txBtn   = btn('ops-btn-sm', '±', () => showTransactionForm(item, () => viewInventory()));
+      var actWrap = div(''); actWrap.style.cssText='display:flex;gap:4px;';
+      actWrap.appendChild(txBtn); actWrap.appendChild(editBtn);
+      return [
+        el('strong', {text: item.item_name, style:'cursor:pointer;color:#38bdf8;'}),
+        item.part_number ? span('ops-mono ops-small', item.part_number) : span('ops-muted','—'),
+        span('ops-badge badge-gray', item.category),
+        onHandEl,
+        String(item.quantity_available),
+        item.reorder_point > 0 ? String(item.reorder_point) : span('ops-muted','—'),
+        item.location || span('ops-muted','—'),
+        item.unit_cost > 0 ? fmt$(item.unit_cost) : span('ops-muted','—'),
+        actWrap
+      ];
+    })
+  ));
+  wrap.appendChild(card);
+}
+
+function showInventoryForm(existing, onDone) {
+  var isEdit = !!existing;
+  var body = div('ops-form-grid');
+
+  var nameInp = el('input',{}); nameInp.className='ops-input'; nameInp.placeholder='Item name (required)';
+  if (existing) nameInp.value = existing.item_name || '';
+  body.appendChild(fg('Item Name *', nameInp, true));
+
+  var partInp = el('input',{}); partInp.className='ops-input'; partInp.placeholder='Part number / NSN';
+  if (existing) partInp.value = existing.part_number || '';
+  body.appendChild(fg('Part Number', partInp));
+
+  var catSel = sel(INV_CATEGORIES, existing?.category || 'other');
+  body.appendChild(fg('Category', catSel));
+
+  var descInp = document.createElement('textarea'); descInp.className='ops-input'; descInp.rows=2;
+  if (existing) descInp.value = existing.description || '';
+  body.appendChild(fg('Description', descInp, true));
+
+  if (!isEdit) {
+    var qtyInp = el('input',{}); qtyInp.className='ops-input'; qtyInp.type='number'; qtyInp.placeholder='0';
+    body.appendChild(fg('Initial Quantity', qtyInp));
+  }
+
+  var reorderInp = el('input',{}); reorderInp.className='ops-input'; reorderInp.type='number'; reorderInp.placeholder='0';
+  if (existing) reorderInp.value = existing.reorder_point || '';
+  body.appendChild(fg('Reorder Point', reorderInp));
+
+  var unitCostInp = el('input',{}); unitCostInp.className='ops-input'; unitCostInp.type='number'; unitCostInp.placeholder='0.00';
+  if (existing) unitCostInp.value = existing.unit_cost || '';
+  body.appendChild(fg('Unit Cost ($)', unitCostInp));
+
+  var locInp = el('input',{}); locInp.className='ops-input'; locInp.placeholder='Shelf / bin location';
+  if (existing) locInp.value = existing.location || '';
+  body.appendChild(fg('Location', locInp));
+
+  var vendorInp = el('input',{}); vendorInp.className='ops-input'; vendorInp.placeholder='Preferred vendor';
+  if (existing) vendorInp.value = existing.vendor || '';
+  body.appendChild(fg('Vendor', vendorInp));
+
+  var leadInp = el('input',{}); leadInp.className='ops-input'; leadInp.type='number'; leadInp.placeholder='0';
+  if (existing) leadInp.value = existing.lead_time_days || '';
+  body.appendChild(fg('Lead Time (days)', leadInp));
+
+  modal(isEdit ? 'Edit Inventory Item' : 'Add Inventory Item', body, async () => {
+    if (!nameInp.value.trim()) throw new Error('Item name is required.');
+    var data = {
+      item_name:      nameInp.value.trim(),
+      part_number:    partInp.value.trim(),
+      category:       catSel.value,
+      description:    descInp.value.trim(),
+      reorder_point:  parseFloat(reorderInp.value) || 0,
+      unit_cost:      parseFloat(unitCostInp.value) || 0,
+      location:       locInp.value.trim(),
+      vendor:         vendorInp.value.trim(),
+      lead_time_days: parseInt(leadInp.value) || 0,
+    };
+    if (!isEdit) data.quantity_on_hand = parseFloat(qtyInp.value) || 0;
+    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
+    if (isEdit) await API.supply.inventory.update(existing.id, data);
+    else await API.supply.inventory.create(data);
+    if (onDone) onDone();
+  }, isEdit ? 'Save Changes' : 'Add Item');
+}
+
+function showTransactionForm(item, onDone) {
+  var body = div('ops-form-grid');
+
+  var typeSel = sel([
+    ['receive','Receive — Add stock'],
+    ['issue','Issue — Remove stock to technician'],
+    ['return','Return — Return unused stock'],
+    ['adjust','Adjust — Set absolute quantity']
+  ], 'receive');
+  body.appendChild(fg('Transaction Type', typeSel));
+
+  var qtyInp = el('input',{}); qtyInp.className='ops-input'; qtyInp.type='number'; qtyInp.placeholder='Quantity';
+  body.appendChild(fg('Quantity', qtyInp));
+
+  var notesInp = el('input',{}); notesInp.className='ops-input'; notesInp.placeholder='Notes (e.g. issued to Tech Smith)';
+  body.appendChild(fg('Notes', notesInp));
+
+  // Current stock info
+  var info = div('');
+  info.style.cssText = 'background:#0f172a;border-radius:8px;padding:12px;font-size:13px;color:#94a3b8;margin-bottom:8px;';
+  info.textContent = 'Current stock: ' + item.quantity_on_hand + ' | Available: ' + item.quantity_available;
+  body.insertBefore(info, body.firstChild);
+
+  modal('Stock Transaction — ' + item.item_name, body, async () => {
+    var qty = parseFloat(qtyInp.value);
+    if (!qty || qty <= 0) throw new Error('Quantity must be greater than 0.');
+    await API.supply.inventory.transact(item.id, {
+      transaction_type: typeSel.value,
+      quantity:         qty,
+      notes:            notesInp.value.trim(),
+    });
+    if (onDone) onDone();
+  }, 'Submit Transaction');
+}
+
+async function viewInventoryDetail(id) {
+  setContent(el('div', {cls:'ops-empty', text:'Loading…'}));
+  var item = await API.supply.inventory.get(id).catch(() => null);
+  if (!item) return;
+  // For now navigate back to inventory — detail view TBD
+  navigate('inventory');
+}
+
 /* ── Work Packages ── */
 const WP_STATUSES = [['draft','Draft'],['submitted','Submitted'],['approved','Approved'],['complete','Complete']];
 const WP_STATUS_COLORS = { draft:'badge-gray', submitted:'badge-blue', approved:'badge-teal', complete:'badge-green' };
@@ -2810,7 +3901,9 @@ function buildSidebar() {
     {label:'Modernizations',  route:'modernizations', icon:'🔧', section:'Modernization'},
     {label:'Avail Projects',   route:'avail-projects',  icon:'📅', section:'Modernization'},
     {label:'Work Packages',    route:'work-packages',   icon:'📦', section:'Modernization'},
-    {label:'Settings',       route:'settings',      icon:'⚙', section:'Admin'},
+    {label:'Supply Requests', route:'supply-requests', icon:'🛒', section:'Supply'},
+    {label:'Inventory',        route:'inventory',       icon:'🗄', section:'Supply'},
+    {label:'Settings',         route:'settings',        icon:'⚙', section:'Admin'},
     {label:'User Manual',      route:'manual',        icon:'📖', section:'Admin'},
     {label:'Platforms',       route:'platforms',     icon:'🌐', section:'Admin'},
   ];
@@ -2848,7 +3941,11 @@ async function dispatch(route, param) {
     else if (route==='wp-detail')       await viewWorkPackageDetail(parseInt(param));
     else if (route==='avail-detail')    await viewAvailProjectDetail(parseInt(param));
     else if (route==='def-detail')    await viewDefDetail(parseInt(param));
-    else if (route==='settings')      await viewSettings();
+    else if (route==='supply-requests') await viewSupplyRequests();
+    else if (route==='supply-detail')   await viewSupplyRequestDetail(parseInt(param));
+    else if (route==='inventory')       await viewInventory();
+    else if (route==='inv-detail')      await viewInventoryDetail(parseInt(param));
+    else if (route==='settings')        await viewSettings();
     else if (route==='manual')         await viewUserManual();
     else if (route==='platforms')     await viewPlatforms();
     else                              await viewDashboard();
