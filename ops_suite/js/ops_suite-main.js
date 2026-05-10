@@ -67,6 +67,12 @@ var API = {
                   groups:     ()      => req('GET',  '/api/groups') },
   settings:     { get:        ()      => req('GET',  '/api/settings'),
                   save:       d       => req('POST', '/api/settings', d) },
+  platforms:    { list:       ()      => req('GET',  '/api/platforms'),
+                  mine:       uid     => req('GET',  '/api/platforms/mine' + (uid ? '?uid='+uid : '')),
+                  get:        id      => req('GET',  '/api/platforms/'+id),
+                  create:     d       => req('POST', '/api/platforms', d),
+                  update:     (id,d)  => req('PUT',  '/api/platforms/'+id, d),
+                  destroy:    id      => req('DELETE','/api/platforms/'+id) },
   files:        { sopFolder:  ()      => req('GET',  '/api/files/sop'),
                   listFolder: p       => req('GET',  '/api/files/list'+qs(p)) }
 };
@@ -1371,6 +1377,49 @@ async function viewDefDetail(id) {
   setContent(wrap);
 }
 
+/* ── Platforms ── */
+async function viewPlatforms() {
+  var wrap = div(''); setContent(wrap);
+  wrap.appendChild(div('ops-page-header', [el('h2', {text: '🌐 Platforms'})]));
+
+  var newBtn = btn('primary', '+ New Platform', () => {
+    showPlatformForm(null, () => viewPlatforms());
+  });
+  wrap.appendChild(newBtn);
+
+  var loading = span('ops-muted', 'Loading…'); wrap.appendChild(loading);
+  var [platforms, groups] = await Promise.all([API.platforms.list(), API.users.groups()]);
+  loading.remove();
+
+  if (!platforms.length) {
+    wrap.appendChild(el('p', {cls:'ops-empty', text:'No platforms yet. Create one to get started.'}));
+    return;
+  }
+
+  var card = div('ops-card');
+  card.appendChild(makeTable(
+    ['Name', 'Location', 'Description', 'Nextcloud Group', ''],
+    platforms.map(p => {
+      var editBtn = btn('ops-btn-sm', '✏ Edit', () => showPlatformForm(p, () => viewPlatforms()));
+      var delBtn  = btn('danger ops-btn-sm', '✕', async () => {
+        if (!confirm('Delete platform "' + p.name + '"?')) return;
+        await API.platforms.destroy(p.id);
+        viewPlatforms();
+      });
+      var actWrap = div(''); actWrap.style.cssText = 'display:flex;gap:4px;';
+      actWrap.appendChild(editBtn); actWrap.appendChild(delBtn);
+      return [
+        el('strong', {text: p.name}),
+        p.location || '—',
+        p.description || '—',
+        p.group_name ? span('ops-tag', p.group_name) : span('ops-muted', 'All users'),
+        actWrap
+      ];
+    })
+  ));
+  wrap.appendChild(card);
+}
+
 /* ── Settings ── */
 async function viewSettings() {
   var wrap=div(''); setContent(wrap);
@@ -1433,6 +1482,7 @@ function buildSidebar() {
     {label:'All Procedures', route:'pm-procedures', icon:'≡'},
     {label:'Deficiencies',   route:'deficiencies',  icon:'⚠', section:'Deficiencies'},
     {label:'Settings',       route:'settings',      icon:'⚙', section:'Admin'},
+    {label:'Platforms',       route:'platforms',     icon:'🌐', section:'Admin'},
   ];
   var lastSection='';
   items.forEach(item=>{
@@ -1464,6 +1514,7 @@ async function dispatch(route, param) {
     else if (route==='deficiencies')  await viewDeficiencies();
     else if (route==='def-detail')    await viewDefDetail(parseInt(param));
     else if (route==='settings')      await viewSettings();
+    else if (route==='platforms')     await viewPlatforms();
     else                              await viewDashboard();
   } catch(e) {
     console.error('[OpsSuite]',route,e);
