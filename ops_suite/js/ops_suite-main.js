@@ -2106,6 +2106,7 @@ function renderGantt(proj, items) {
     var mx = e.clientX - rect.left;
     var my = e.clientY - rect.top;
     var clickedIdx = Math.floor((my - 30) / rowH);
+    console.log('[Gantt click] my:', my, 'rowH:', rowH, 'idx:', clickedIdx, 'items:', items.length);
     if (clickedIdx < 0 || clickedIdx >= items.length) return;
     showItemPopup(items[clickedIdx], e.clientX, e.clientY);
   });
