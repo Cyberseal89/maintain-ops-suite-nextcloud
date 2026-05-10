@@ -5,6 +5,8 @@ namespace OCA\OpsSuite\Controller;
 
 use OCA\OpsSuite\Db\Deficiency;
 use OCA\OpsSuite\Db\DeficiencyMapper;
+use OCA\OpsSuite\Db\SupplyRequestMapper;
+use OCA\OpsSuite\Db\SupplyRequestItemMapper;
 use OCA\OpsSuite\Db\DeficiencyHistory;
 use OCA\OpsSuite\Db\DeficiencyHistoryMapper;
 use OCP\AppFramework\Controller;
@@ -18,6 +20,8 @@ class DeficiencyController extends Controller {
     public function __construct(
         string       $appName,
         IRequest     $request,
+        private readonly SupplyRequestMapper     $supplyMapper,
+        private readonly SupplyRequestItemMapper $supplyItemMapper,
         private readonly DeficiencyMapper        $mapper,
         private readonly DeficiencyHistoryMapper $historyMapper,
         private readonly IUserSession            $userSession
@@ -53,6 +57,8 @@ class DeficiencyController extends Controller {
             $data    = $def->jsonSerialize();
             $data['history'] = array_map(fn($h) => $h->jsonSerialize(), $history);
             $data['logs']    = $data['history']; // alias for JS compatibility
+            $supplyReqs = $this->supplyMapper->findForSource('deficiency', $id);
+            $data['supply_requests'] = array_map(fn($sr) => $sr->jsonSerialize(), $supplyReqs);
             return new DataResponse($data);
         } catch (DoesNotExistException) {
             return new DataResponse(['message' => 'Not found'], Http::STATUS_NOT_FOUND);

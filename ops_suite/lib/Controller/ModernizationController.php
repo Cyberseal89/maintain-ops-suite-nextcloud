@@ -5,6 +5,7 @@ namespace OCA\OpsSuite\Controller;
 
 use OCA\OpsSuite\Db\ModernizationMapper;
 use OCA\OpsSuite\Db\ModernizationDocMapper;
+use OCA\OpsSuite\Db\SupplyRequestMapper;
 use OCA\OpsSuite\Db\Modernization;
 use OCA\OpsSuite\Db\ModernizationDoc;
 use OCA\OpsSuite\Service\PermissionService;
@@ -19,6 +20,7 @@ class ModernizationController extends Controller {
     public function __construct(
         string                        $appName,
         IRequest                      $request,
+        private readonly SupplyRequestMapper    $supplyMapper,
         private readonly ModernizationMapper    $mapper,
         private readonly ModernizationDocMapper $docMapper,
         private readonly PermissionService      $permission,
@@ -50,6 +52,8 @@ class ModernizationController extends Controller {
             $docs = $this->docMapper->findForModernization($id);
             $data = $mod->jsonSerialize();
             $data['docs'] = array_map(fn($d) => $d->jsonSerialize(), $docs);
+            $supplyReqs = $this->supplyMapper->findForSource('modernization', $id);
+            $data['supply_requests'] = array_map(fn($sr) => $sr->jsonSerialize(), $supplyReqs);
             return new DataResponse($data);
         } catch (DoesNotExistException) {
             return new DataResponse(['message' => 'Not found'], Http::STATUS_NOT_FOUND);
