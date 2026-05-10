@@ -73,6 +73,11 @@ class Asset extends Entity implements \JsonSerializable {
             'created_at'      => $this->createdAt,
             'updated_at'      => $this->updatedAt,
             'platform_id'     => $this->platformId,
+            'last_verified_at'=> $this->lastVerifiedAt,
+            'verified_by'     => $this->verifiedBy,
+            'uii'             => $this->uii,
+            'iuid_compliant'  => (bool)$this->iuidCompliant,
+            'cage_code'       => $this->cageCode,
         ];
     }
 }

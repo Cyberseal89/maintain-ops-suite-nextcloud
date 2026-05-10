@@ -793,6 +793,16 @@ async function viewAssetDetail(id) {
     ['Serial #',span('ops-mono',asset.serial_number||'—')],['Version',span('ops-mono',asset.version||'—')],
     ['Location',asset.location||'—'],['IP Address',span('ops-mono',asset.ip_address||'—')],
     ['Install Date',fmtDate(asset.install_date)],
+    ['Last Verified', (()=>{
+      if (!asset.last_verified_at) return span('ops-danger', 'Never verified');
+      var daysAgo = Math.floor((new Date() - new Date(asset.last_verified_at)) / 86400000);
+      var overdue = daysAgo > 548;
+      var txt = asset.last_verified_at.slice(0,10) + ' by ' + (asset.verified_by||'unknown') + ' (' + daysAgo + 'd ago)';
+      return span(overdue ? 'ops-danger' : 'ops-success', txt + (overdue ? ' ⚠ OVERDUE' : ' ✓'));
+    })()],
+    ['UII', asset.uii ? span('ops-mono ops-small', asset.uii) : span('ops-muted','—')],
+    ['IUID Compliant', asset.iuid_compliant ? span('ops-success','✓ Yes') : span('ops-muted','No')],
+    ['CAGE Code', asset.cage_code || span('ops-muted','—')],
     ['Warranty Exp',(()=>{ if(!asset.warranty_expiry) return '—';
       var exp=new Date(asset.warranty_expiry)<new Date();
       return span(exp?'ops-danger':'',fmtDate(asset.warranty_expiry)+(exp?' (expired)':'')); })()]];
