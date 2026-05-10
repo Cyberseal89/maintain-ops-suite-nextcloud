@@ -12,15 +12,24 @@ class ProcedureMapper extends QBMapper {
         parent::__construct($db, 'ops_procedures', Procedure::class);
     }
 
+    private function getAssetIdsForPlatforms(array $platformIds): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('id')->from('ops_assets')
+           ->where($qb->expr()->in('platform_id', $qb->createNamedParameter($platformIds, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_INT_ARRAY)));
+        $r = $qb->executeQuery();
+        $ids = array_column($r->fetchAll(), 'id');
+        $r->closeCursor();
+        return array_map('intval', $ids);
+    }
+
     private function addPlatformFilter(\OCP\DB\QueryBuilder\IQueryBuilder $qb, array $platformIds): void {
         if (empty($platformIds)) return;
-        $qb->innerJoin(
-            'oc_ops_procedures',
-            'oc_ops_assets',
-            'a',
-            $qb->expr()->eq('oc_ops_procedures.asset_id', 'a.id')
-        );
-        $qb->andWhere($qb->expr()->in('a.platform_id', $qb->createNamedParameter($platformIds, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_INT_ARRAY)));
+        $assetIds = $this->getAssetIdsForPlatforms($platformIds);
+        if (empty($assetIds)) {
+            $qb->andWhere('1=0'); // no assets = no results
+            return;
+        }
+        $qb->andWhere($qb->expr()->in('asset_id', $qb->createNamedParameter($assetIds, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_INT_ARRAY)));
     }
 
     public function find(int $id): Procedure {
