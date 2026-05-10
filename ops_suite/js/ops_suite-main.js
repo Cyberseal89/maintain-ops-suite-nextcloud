@@ -1362,6 +1362,8 @@ async function viewDefDetail(id) {
   left.appendChild(ac2);
   two.appendChild(left);
 
+  // History
+  var right=div('');
   // Supply Requests section
   var supplyReqs = def.supply_requests || [];
   if (supplyReqs.length) {
@@ -1386,8 +1388,6 @@ async function viewDefDetail(id) {
     right.insertBefore(srCard, right.firstChild);
   }
 
-  // History
-  var right=div('');
   var hc=div('ops-card ops-detail-card');
   hc.appendChild(div('ops-card-header',[el('h3',{text:'Troubleshooting History ('+logs.length+')'})]));
   var timeline=div('ops-timeline');
