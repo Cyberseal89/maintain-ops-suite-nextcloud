@@ -29,9 +29,12 @@ class AssetMapper extends QBMapper {
         return $this->findEntities($qb);
     }
 
-    public function countAll(): int {
+    public function countAll(array $platformIds = []): int {
         $qb = $this->db->getQueryBuilder();
         $qb->select($qb->createFunction('COUNT(*) AS cnt'))->from($this->getTableName());
+        if (!empty($platformIds)) {
+            $qb->where($qb->expr()->in('platform_id', $qb->createNamedParameter($platformIds, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_INT_ARRAY)));
+        }
         $r = $qb->executeQuery(); $row = $r->fetch(); $r->closeCursor();
         return (int)($row['cnt'] ?? 0);
     }
@@ -41,6 +44,9 @@ class AssetMapper extends QBMapper {
         $qb->select('asset_type', $qb->createFunction('COUNT(*) AS cnt'))
            ->from($this->getTableName())
            ->groupBy('asset_type');
+        if (!empty($platformIds)) {
+            $qb->andWhere($qb->expr()->in('platform_id', $qb->createNamedParameter($platformIds, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_INT_ARRAY)));
+        }
         $r = $qb->executeQuery(); $rows = $r->fetchAll(); $r->closeCursor();
         $out = [];
         foreach ($rows as $row) { $out[$row['asset_type']] = (int)$row['cnt']; }
