@@ -17,9 +17,9 @@ class InventoryItem extends Entity implements \JsonSerializable {
     protected string  $vendor           = '';
     protected int     $leadTimeDays     = 0;
     protected string  $countClass       = 'C';
-    protected string  $lastCountedAt    = '';
+    protected ?string $lastCountedAt    = null;
     protected string  $countedBy        = '';
-    protected string  $nextCountDue     = '';
+    protected ?string $nextCountDue     = null;
     protected string  $createdBy        = '';
     protected string  $createdAt        = '';
     protected string  $updatedAt        = '';
