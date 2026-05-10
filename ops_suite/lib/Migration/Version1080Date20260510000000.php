@@ -56,6 +56,17 @@ class Version1080Date20260510000000 extends SimpleMigrationStep {
             }
         }
 
+        // ── Supply request revalidation fields ───────────────────────
+        if ($schema->hasTable('ops_supply_requests')) {
+            $t = $schema->getTable('ops_supply_requests');
+            if (!$t->hasColumn('last_revalidated_at')) {
+                $t->addColumn('last_revalidated_at', Types::DATETIME, ['notnull' => false, 'default' => null]);
+            }
+            if (!$t->hasColumn('revalidation_due')) {
+                $t->addColumn('revalidation_due', Types::DATE, ['notnull' => false, 'default' => null]);
+            }
+        }
+
         // ── Supply request item procurement fields ─────────────────
         if ($schema->hasTable('ops_supply_req_items')) {
             $t = $schema->getTable('ops_supply_req_items');

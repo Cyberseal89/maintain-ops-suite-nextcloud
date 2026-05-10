@@ -115,6 +115,15 @@ class AssetController extends Controller {
         if (array_key_exists('platform_id', $data))      $asset->setPlatformId($data['platform_id'] ? (int)$data['platform_id'] : null);
         if (array_key_exists('tags', $data))            $asset->setTags($data['tags']);
         if (array_key_exists('linked_assets', $data))   $asset->setLinkedAssets($data['linked_assets']);
+        // Verify action
+        if (!empty($data['verify'])) {
+            $uid2 = $this->userSession->getUser()?->getUID() ?? '';
+            $asset->setLastVerifiedAt(date('Y-m-d H:i:s'));
+            $asset->setVerifiedBy($uid2);
+        }
+        if (array_key_exists('uii', $data))            $asset->setUii($data['uii']);
+        if (array_key_exists('cage_code', $data))      $asset->setCageCode($data['cage_code']);
+        if (array_key_exists('iuid_compliant', $data)) $asset->setIuidCompliant((int)$data['iuid_compliant']);
         $asset->setUpdatedAt(date('Y-m-d H:i:s'));
 
         return new DataResponse($this->mapper->update($asset)->jsonSerialize());
