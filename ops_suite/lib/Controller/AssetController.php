@@ -28,7 +28,9 @@ class AssetController extends Controller {
     public function index(): DataResponse {
         $type   = $this->request->getParam('type')   ?: null;
         $status = $this->request->getParam('status') ?: null;
-        $assets = $this->mapper->findAll($type, $status);
+        $platformParam = $this->request->getParam('platform_ids', '');
+        $platformIds = $platformParam ? array_map('intval', explode(',', $platformParam)) : [];
+        $assets = $this->mapper->findAll($type, $status, $platformIds);
         return new DataResponse(array_map(fn($a) => $a->jsonSerialize(), $assets));
     }
 

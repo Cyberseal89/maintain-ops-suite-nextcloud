@@ -20,11 +20,14 @@ class AssetMapper extends QBMapper {
         return $this->findEntity($qb);
     }
 
-    public function findAll(?string $type = null, ?string $status = null): array {
+    public function findAll(?string $type = null, ?string $status = null, array $platformIds = []): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')->from($this->getTableName());
         if ($type)   $qb->andWhere($qb->expr()->eq('asset_type', $qb->createNamedParameter($type)));
         if ($status) $qb->andWhere($qb->expr()->eq('status',     $qb->createNamedParameter($status)));
+        if (!empty($platformIds)) {
+            $qb->andWhere($qb->expr()->in('platform_id', $qb->createNamedParameter($platformIds, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_INT_ARRAY)));
+        }
         $qb->orderBy('name', 'ASC');
         return $this->findEntities($qb);
     }

@@ -29,7 +29,9 @@ class ProcedureController extends Controller {
         $assetId     = $this->request->getParam('asset_id');
         $overdueOnly = $this->request->getParam('overdue') === '1';
         $assignedTo  = $this->request->getParam('assigned_to') ?: null;
-        $procs = $this->mapper->findAll($assetId ? (int)$assetId : null, $overdueOnly, $assignedTo);
+        $platformParam = $this->request->getParam('platform_ids', '');
+        $platformIds = $platformParam ? array_map('intval', explode(',', $platformParam)) : [];
+        $procs = $this->mapper->findAll($assetId ? (int)$assetId : null, $overdueOnly, $assignedTo, $platformIds);
         return new DataResponse(array_map(fn($p) => $p->jsonSerialize(), $procs));
     }
 

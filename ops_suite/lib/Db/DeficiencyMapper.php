@@ -39,7 +39,7 @@ class DeficiencyMapper extends QBMapper {
         return $this->findEntity($qb);
     }
 
-    public function findAll(?string $severity = null, ?string $status = null, ?int $assetId = null, ?string $assignedTo = null): array {
+    public function findAll(?string $severity = null, ?string $status = null, ?int $assetId = null, ?string $assignedTo = null, array $platformIds = []): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')->from($this->getTableName());
 
