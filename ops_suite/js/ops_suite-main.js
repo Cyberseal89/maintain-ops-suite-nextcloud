@@ -550,12 +550,40 @@ async function buildDeficiencyForm(data, fixedAssetId) {
 
 /* ── Dashboard ── */
 async function viewDashboard() {
-  var wrap=div(''); var hdr=div('ops-page-header',[el('h2',{text:'Dashboard'})]);
+  var wrap=div('');
+  var hdr=div('ops-page-header',[el('h2',{text:'Dashboard'})]);
+
+  // Platform selector buttons
+  var platforms = await API.platforms.list().catch(()=>[]);
+  if (platforms.length > 0) {
+    var platWrap = div('');
+    platWrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;';
+    platWrap.appendChild(el('span',{text:'Platform:',style:'font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.7px;'}));
+    var allBtn = btn(_selectedPlatformIds.length===0?'primary ops-btn-sm':'ops-btn-sm','All Platforms', ()=>{
+      _selectedPlatformIds=[];
+      viewDashboard();
+    });
+    platWrap.appendChild(allBtn);
+    platforms.forEach(p=>{
+      var isSelected = _selectedPlatformIds.includes(p.id);
+      var pb = btn(isSelected?'primary ops-btn-sm':'ops-btn-sm', p.name, ()=>{
+        if (isSelected) {
+          _selectedPlatformIds = _selectedPlatformIds.filter(id=>id!==p.id);
+        } else {
+          _selectedPlatformIds = [..._selectedPlatformIds, p.id];
+        }
+        viewDashboard();
+      });
+      platWrap.appendChild(pb);
+    });
+    hdr.appendChild(platWrap);
+  }
+
   wrap.appendChild(hdr);
   var loading=span('ops-muted','Loading stats…'); wrap.appendChild(loading);
   setContent(wrap);
   var stats;
-  try{ stats=await API.dashboard.stats(); } catch(e){
+  try{ stats=await API.dashboard.stats(_selectedPlatformIds); } catch(e){
     loading.remove(); wrap.appendChild(el('div',{cls:'ops-empty',html:'<span style="color:#f87171">⚠ '+e.message+'</span>'})); return;
   }
   loading.remove();
