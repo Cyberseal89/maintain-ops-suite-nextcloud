@@ -2358,18 +2358,6 @@ async function viewInventoryDetail(id) {
 }
 
 /* ── Supply / Warehouse ── */
-const SR_STATUSES = [
-  ['draft','Draft'],['submitted','Submitted'],['approved','Approved'],
-  ['ordered','Ordered'],['partially_received','Partially Received'],
-  ['received','Received'],['closed','Closed'],['cancelled','Cancelled']
-];
-const SR_STATUS_COLORS = {
-  draft:'badge-gray', submitted:'badge-blue', approved:'badge-teal',
-  ordered:'badge-orange', partially_received:'badge-orange',
-  received:'badge-green', closed:'badge-green', cancelled:'badge-gray'
-};
-const SR_PRIORITIES = [['routine','Routine'],['urgent','Urgent'],['emergency','Emergency']];
-const INV_CATEGORIES = [['hardware','Hardware'],['software','Software'],['consumable','Consumable'],['tool','Tool'],['other','Other']];
 
 async function viewSupplyRequests() {
   var wrap = div(''); setContent(wrap);
