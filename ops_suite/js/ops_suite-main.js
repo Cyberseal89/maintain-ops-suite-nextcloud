@@ -2526,7 +2526,7 @@ async function viewInventory() {
       var actWrap = div(''); actWrap.style.cssText='display:flex;gap:4px;';
       actWrap.appendChild(txBtn); actWrap.appendChild(editBtn);
       return [
-        el('strong', {text: item.item_name, style:'cursor:pointer;color:#38bdf8;'}),
+        (()=>{ var n=el('strong',{text:item.item_name,style:'cursor:pointer;color:#38bdf8;'}); n.onclick=()=>navigate('inv-detail',item.id); return n; })(),
         item.part_number ? span('ops-mono ops-small', item.part_number) : span('ops-muted','—'),
         span('ops-badge badge-gray', item.category),
         onHandEl,
@@ -2673,11 +2673,89 @@ async function viewInventoryDetail(id) {
   setContent(el('div', {cls:'ops-empty', text:'Loading…'}));
   var item = await API.supply.inventory.get(id).catch(() => null);
   if (!item) return;
-  // For now navigate back to inventory — detail view TBD
-  navigate('inventory');
-}
 
-/* ── Validations Due ── */
+  var wrap = div('');
+  var hdr = div('ops-page-header');
+  hdr.appendChild(btn('', '← Inventory', () => navigate('inventory')));
+  hdr.appendChild(el('h2', {text: item.item_name}));
+  if (item.below_reorder) hdr.appendChild(span('ops-badge badge-orange', '⚠ Below Reorder Point'));
+  hdr.appendChild(btn('', '✏ Edit', () => showInventoryForm(item, () => viewInventoryDetail(id))));
+  hdr.appendChild(btn('primary', '± Transaction', () => showTransactionForm(item, () => viewInventoryDetail(id))));
+  wrap.appendChild(hdr);
+
+  var two = div('ops-two-col');
+  var left = div('');
+
+  // Details card
+  var dc = div('ops-card');
+  dc.appendChild(div('ops-card-header', [el('h3', {text:'Item Details'})]));
+  var kvg = div('ops-kv-grid');
+  [
+    ['Part Number',   item.part_number ? span('ops-mono', item.part_number) : span('ops-muted','—')],
+    ['Category',      span('ops-badge badge-gray', item.category)],
+    ['Description',   item.description || span('ops-muted','—')],
+    ['Location',      item.location || span('ops-muted','—')],
+    ['Vendor',        item.vendor || span('ops-muted','—')],
+    ['Lead Time',     item.lead_time_days ? item.lead_time_days + ' days' : span('ops-muted','—')],
+    ['Unit Cost',     item.unit_cost > 0 ? fmt$(item.unit_cost) : span('ops-muted','—')],
+    ['Total Value',   item.total_value > 0 ? fmt$(item.total_value) : span('ops-muted','—')],
+    ['Count Class',   span('ops-badge badge-blue', COUNT_CLASS_LABELS[item.count_class]||item.count_class)],
+    ['Last Counted',  item.last_counted_at ? item.last_counted_at.slice(0,10) + ' by ' + (item.counted_by||'unknown') : span('ops-danger','Never')],
+    ['Next Count Due',item.next_count_due ? item.next_count_due.slice(0,10) : span('ops-muted','—')],
+  ].forEach(([k,v]) => {
+    var kv = div('ops-kv');
+    kv.appendChild(span('ops-kv-key', k));
+    typeof v === 'string' ? kv.appendChild(span('',v)) : kv.appendChild(v);
+    kvg.appendChild(kv);
+  });
+  dc.appendChild(kvg);
+  left.appendChild(dc);
+
+  // Stock levels card
+  var sc = div('ops-card'); sc.style.marginTop = '16px';
+  sc.appendChild(div('ops-card-header', [el('h3', {text:'Stock Levels'})]));
+  var cg = div('ops-cost-grid');
+  [
+    ['On Hand',     String(item.quantity_on_hand),  'ops-blue'],
+    ['Reserved',    String(item.quantity_reserved),  'ops-warn'],
+    ['Available',   String(item.quantity_available), item.below_reorder ? 'ops-danger' : 'ops-green'],
+    ['Reorder At',  String(item.reorder_point),      'ops-muted'],
+  ].forEach(([l,v,c]) => {
+    var cell = div('ops-cost-cell');
+    cell.appendChild(el('div', {cls:'ops-cost-label', text:l}));
+    cell.appendChild(el('div', {cls:'ops-cost-value '+c, text:v}));
+    cg.appendChild(cell);
+  });
+  sc.appendChild(cg);
+  left.appendChild(sc);
+  two.appendChild(left);
+
+  // Transaction history
+  var right = div('');
+  var txCard = div('ops-card ops-detail-card');
+  txCard.appendChild(div('ops-card-header', [el('h3', {text:'Transaction History'})]));
+  var txs = item.transactions || [];
+  if (!txs.length) {
+    txCard.appendChild(el('p', {cls:'ops-empty ops-small', text:'No transactions yet.'}));
+  } else {
+    var TX_COLORS = {receive:'badge-green', issue:'badge-orange', adjust:'badge-blue', return:'badge-teal'};
+    txCard.appendChild(makeTable(
+      ['Date', 'Type', 'Qty', 'Reference', 'Notes', 'By'],
+      txs.map(tx => [
+        tx.created_at ? tx.created_at.slice(0,10) : '—',
+        span('ops-badge '+(TX_COLORS[tx.transaction_type]||'badge-gray'), tx.transaction_type),
+        el('strong', {text: String(tx.quantity), style: tx.transaction_type==='issue'?'color:#f59e0b;':'color:#4ade80;'}),
+        tx.reference_type ? span('ops-muted ops-small', tx.reference_type + (tx.reference_id?' #'+tx.reference_id:'')) : span('ops-muted','—'),
+        tx.notes || span('ops-muted','—'),
+        tx.created_by || span('ops-muted','—'),
+      ])
+    ));
+  }
+  right.appendChild(txCard);
+  two.appendChild(right);
+  wrap.appendChild(two);
+  setContent(wrap);
+}
 
 async function viewValidationsDue() {
   var wrap = div(''); setContent(wrap);
@@ -3243,7 +3321,7 @@ async function viewInventory() {
       var actWrap = div(''); actWrap.style.cssText='display:flex;gap:4px;';
       actWrap.appendChild(txBtn); actWrap.appendChild(editBtn);
       return [
-        el('strong', {text: item.item_name, style:'cursor:pointer;color:#38bdf8;'}),
+        (()=>{ var n=el('strong',{text:item.item_name,style:'cursor:pointer;color:#38bdf8;'}); n.onclick=()=>navigate('inv-detail',item.id); return n; })(),
         item.part_number ? span('ops-mono ops-small', item.part_number) : span('ops-muted','—'),
         span('ops-badge badge-gray', item.category),
         onHandEl,
@@ -3385,18 +3463,6 @@ function showTransactionForm(item, onDone) {
     if (onDone) onDone();
   }, 'Submit Transaction');
 }
-
-async function viewInventoryDetail(id) {
-  setContent(el('div', {cls:'ops-empty', text:'Loading…'}));
-  var item = await API.supply.inventory.get(id).catch(() => null);
-  if (!item) return;
-  // For now navigate back to inventory — detail view TBD
-  navigate('inventory');
-}
-
-/* ── Work Packages ── */
-const WP_STATUSES = [['draft','Draft'],['submitted','Submitted'],['approved','Approved'],['complete','Complete']];
-const WP_STATUS_COLORS = { draft:'badge-gray', submitted:'badge-blue', approved:'badge-teal', complete:'badge-green' };
 
 async function viewWorkPackages() {
   var wrap = div(''); setContent(wrap);
