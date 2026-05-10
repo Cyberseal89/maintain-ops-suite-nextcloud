@@ -1,0 +1,39 @@
+<?php
+declare(strict_types=1);
+namespace OCA\OpsSuite\Db;
+use OCP\AppFramework\Db\QBMapper;
+use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\IDBConnection;
+
+class SupplyRequestMapper extends QBMapper {
+    public function __construct(IDBConnection $db) {
+        parent::__construct($db, 'ops_supply_requests', SupplyRequest::class);
+    }
+
+    public function find(int $id): SupplyRequest {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')->from($this->getTableName())
+           ->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)));
+        return $this->findEntity($qb);
+    }
+
+    public function findAll(?string $status = null, ?string $priority = null, array $platformIds = []): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')->from($this->getTableName());
+        if ($status)   $qb->andWhere($qb->expr()->eq('status',   $qb->createNamedParameter($status)));
+        if ($priority) $qb->andWhere($qb->expr()->eq('priority', $qb->createNamedParameter($priority)));
+        if (!empty($platformIds)) {
+            $qb->andWhere($qb->expr()->in('platform_id', $qb->createNamedParameter($platformIds, IQueryBuilder::PARAM_INT_ARRAY)));
+        }
+        $qb->orderBy('updated_at', 'DESC');
+        return $this->findEntities($qb);
+    }
+
+    public function findForSource(string $sourceType, int $sourceId): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')->from($this->getTableName())
+           ->where($qb->expr()->eq('source_type', $qb->createNamedParameter($sourceType)))
+           ->andWhere($qb->expr()->eq('source_id', $qb->createNamedParameter($sourceId, IQueryBuilder::PARAM_INT)));
+        return $this->findEntities($qb);
+    }
+}

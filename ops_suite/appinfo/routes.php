@@ -47,6 +47,20 @@ return [
         ['name' => 'settings#save', 'url' => '/api/settings', 'verb' => 'POST'],
 
         ['name' => 'page#manual',  'url' => '/user-manual', 'verb' => 'GET'],
+        // ── Supply / Warehouse ────────────────────────────────────
+        ['name' => 'supply#indexRequests',     'url' => '/api/supply/requests',                          'verb' => 'GET'],
+        ['name' => 'supply#showRequest',       'url' => '/api/supply/requests/{id}',                     'verb' => 'GET'],
+        ['name' => 'supply#createRequest',     'url' => '/api/supply/requests',                          'verb' => 'POST'],
+        ['name' => 'supply#updateRequest',     'url' => '/api/supply/requests/{id}',                     'verb' => 'PUT'],
+        ['name' => 'supply#destroyRequest',    'url' => '/api/supply/requests/{id}',                     'verb' => 'DELETE'],
+        ['name' => 'supply#addRequestItem',    'url' => '/api/supply/requests/{id}/items',               'verb' => 'POST'],
+        ['name' => 'supply#updateRequestItem', 'url' => '/api/supply/requests/{id}/items/{itemId}',      'verb' => 'PUT'],
+        ['name' => 'supply#deleteRequestItem', 'url' => '/api/supply/requests/{id}/items/{itemId}',      'verb' => 'DELETE'],
+        ['name' => 'supply#indexInventory',    'url' => '/api/supply/inventory',                         'verb' => 'GET'],
+        ['name' => 'supply#showInventory',     'url' => '/api/supply/inventory/{id}',                    'verb' => 'GET'],
+        ['name' => 'supply#createInventory',   'url' => '/api/supply/inventory',                         'verb' => 'POST'],
+        ['name' => 'supply#updateInventory',   'url' => '/api/supply/inventory/{id}',                    'verb' => 'PUT'],
+        ['name' => 'supply#transactInventory', 'url' => '/api/supply/inventory/{id}/transact',           'verb' => 'POST'],
         // ── Work Packages ─────────────────────────────────────────
         ['name' => 'workPackage#index',      'url' => '/api/work-packages',                        'verb' => 'GET'],
         ['name' => 'workPackage#show',       'url' => '/api/work-packages/{id}',                   'verb' => 'GET'],
