@@ -1908,12 +1908,8 @@ async function viewValidationsDue() {
         var statusB = a.overdue
           ? span('ops-badge badge-red', 'OVERDUE')
           : span('ops-badge badge-orange', 'DUE SOON');
-        var verifyBtn2 = btn('success ops-btn-sm', '✓ Verify', async () => {
-          try {
-            await API.assets.update(a.id, {verify: 1});
-            alert('Asset verified successfully.');
-            viewValidationsDue();
-          } catch(e) { alert('Error: ' + e.message); }
+        var verifyBtn2 = btn('success ops-btn-sm', '✓ Verify', () => {
+          showAssetVerifyModal(a, () => viewValidationsDue());
         });
         return [
           span('ops-mono', a.asset_id_label || '#'+a.id),
@@ -2037,6 +2033,50 @@ async function viewValidationsDue() {
   var style = document.createElement('style');
   style.textContent = '@media print { .ops-sidebar, .ops-topbar, button { display:none!important; } }';
   document.head.appendChild(style);
+}
+
+/* ── Asset Verify Modal ── */
+function showAssetVerifyModal(asset, onDone) {
+  var body = div('ops-form-grid');
+
+  // Info block
+  var info = div('');
+  info.style.cssText = 'background:#0f172a;border-radius:8px;padding:12px;font-size:13px;color:#94a3b8;margin-bottom:8px;';
+  info.innerHTML = '<strong style="color:#e2e8f0;">' + asset.name + '</strong><br>' +
+    'Type: ' + (asset.asset_type||'—') + ' &nbsp;|&nbsp; Serial: ' + (asset.serial_number||'—') + '<br>' +
+    'Last Verified: ' + (asset.last_verified_at ? asset.last_verified_at.slice(0,10) : 'Never') +
+    (asset.verified_by ? ' by ' + asset.verified_by : '');
+  body.appendChild(info);
+
+  var locInp = el('input',{}); locInp.className='ops-input'; locInp.placeholder='Location (update if changed)';
+  locInp.value = asset.location || '';
+  body.appendChild(fg('Location', locInp));
+
+  var statusSel = sel([
+    ['operational','Operational'],['degraded','Degraded'],
+    ['offline','Offline'],['maintenance','In Maintenance'],['decommissioned','Decommissioned']
+  ], asset.status || 'operational');
+  body.appendChild(fg('Status', statusSel));
+
+  var serialInp = el('input',{}); serialInp.className='ops-input'; serialInp.placeholder='Serial number';
+  serialInp.value = asset.serial_number || '';
+  body.appendChild(fg('Serial Number', serialInp));
+
+  var notesInp = document.createElement('textarea'); notesInp.className='ops-input'; notesInp.rows=2;
+  notesInp.placeholder='Verification notes (condition, findings, etc.)';
+  body.appendChild(fg('Verification Notes', notesInp, true));
+
+  modal('Verify Asset — ' + asset.asset_id_label, body, async () => {
+    await API.assets.update(asset.id, {
+      verify:        1,
+      location:      locInp.value.trim(),
+      status:        statusSel.value,
+      serial_number: serialInp.value.trim(),
+      notes:         asset.notes ? asset.notes + '
+[Verified] ' + notesInp.value.trim() : notesInp.value.trim(),
+    });
+    if (onDone) onDone();
+  }, '✓ Confirm Verification');
 }
 
 /* ── Supply / Warehouse ── */
@@ -2689,12 +2729,8 @@ async function viewValidationsDue() {
         var statusB = a.overdue
           ? span('ops-badge badge-red', 'OVERDUE')
           : span('ops-badge badge-orange', 'DUE SOON');
-        var verifyBtn2 = btn('success ops-btn-sm', '✓ Verify', async () => {
-          try {
-            await API.assets.update(a.id, {verify: 1});
-            alert('Asset verified successfully.');
-            viewValidationsDue();
-          } catch(e) { alert('Error: ' + e.message); }
+        var verifyBtn2 = btn('success ops-btn-sm', '✓ Verify', () => {
+          showAssetVerifyModal(a, () => viewValidationsDue());
         });
         return [
           span('ops-mono', a.asset_id_label || '#'+a.id),
@@ -2820,8 +2856,7 @@ async function viewValidationsDue() {
   document.head.appendChild(style);
 }
 
-/* ── Supply / Warehouse ── */
-
+/* ── Asset Verify Modal ── */
 async function viewSupplyRequests() {
   var wrap = div(''); setContent(wrap);
   var hdr = div('ops-page-header', [el('h2', {text: '🛒 Supply Requests'})]);
