@@ -1609,6 +1609,22 @@ async function viewModernizationDetail(id) {
     hdr.appendChild(advBtn);
   }
   hdr.appendChild(btn('', '✏ Edit', () => showModernizationForm(mod, () => viewModernizationDetail(id))));
+  // Supply request only available after approval stage
+  var approvedStatuses = ['approval','execution','complete'];
+  if (approvedStatuses.includes(mod.status)) {
+    hdr.appendChild(btn('', '🛒 Request Parts', () => showSupplyRequestForm({
+      title: 'Parts for: ' + mod.title,
+      source_type: 'modernization',
+      source_id: mod.id,
+      platform_id: mod.platform_id,
+    }, () => viewModernizationDetail(id))));
+  } else {
+    var lockedBtn = btn('', '🔒 Request Parts (Approve First)', () => 
+      alert('Supply requests are only available after the modernization reaches Approval stage.'));
+    lockedBtn.disabled = true;
+    lockedBtn.style.opacity = '0.5';
+    hdr.appendChild(lockedBtn);
+  }
   wrap.appendChild(hdr);
 
   var two = div('ops-two-col');
@@ -1887,19 +1903,23 @@ async function viewValidationsDue() {
     assetCard.appendChild(el('p', {cls:'ops-empty', text:'No asset verifications due this week.'}));
   } else {
     assetCard.appendChild(makeTable(
-      ['Asset ID', 'Name', 'Type', 'Location', 'Last Verified', 'Next Due', 'Verified By', 'Status', ''],
+      ['Asset ID', 'Name', 'Type', 'Platform', 'Location', 'Last Verified', 'Next Due', 'Verified By', 'Status', ''],
       assetsDue.map(a => {
         var statusB = a.overdue
           ? span('ops-badge badge-red', 'OVERDUE')
           : span('ops-badge badge-orange', 'DUE SOON');
         var verifyBtn2 = btn('success ops-btn-sm', '✓ Verify', async () => {
-          await API.assets.update(a.id, {verify: 1});
-          viewValidationsDue();
+          try {
+            await API.assets.update(a.id, {verify: 1});
+            alert('Asset verified successfully.');
+            viewValidationsDue();
+          } catch(e) { alert('Error: ' + e.message); }
         });
         return [
           span('ops-mono', a.asset_id_label || '#'+a.id),
           el('strong', {text: a.name}),
           span('ops-badge badge-gray', a.asset_type || '—'),
+          a.platform_id ? span('ops-badge badge-blue', 'Platform #'+a.platform_id) : span('ops-muted','—'),
           a.location || span('ops-muted','—'),
           a.last_verified_at ? a.last_verified_at.slice(0,10) : span('ops-danger','Never'),
           a.next_due ? a.next_due.toISOString().slice(0,10) : span('ops-danger','Overdue'),
@@ -1922,7 +1942,7 @@ async function viewValidationsDue() {
     invCard.appendChild(el('p', {cls:'ops-empty', text:'No inventory cycle counts due this week.'}));
   } else {
     invCard.appendChild(makeTable(
-      ['Item Name', 'Part #', 'Class', 'Location', 'On Hand', 'Last Counted', 'Next Due', 'Status', ''],
+      ['Item Name', 'Part #', 'Class', 'Platform', 'Location', 'On Hand', 'Last Counted', 'Next Due', 'Status', ''],
       invDue.map(i => {
         var statusB = i.overdue
           ? span('ops-badge badge-red', 'OVERDUE')
@@ -1945,6 +1965,7 @@ async function viewValidationsDue() {
           el('strong', {text: i.item_name}),
           i.part_number ? span('ops-mono ops-small', i.part_number) : span('ops-muted','—'),
           span('ops-badge badge-blue', COUNT_CLASS_LABELS[i.count_class] || i.count_class),
+          i.platform_id ? span('ops-badge badge-blue', 'Platform #'+i.platform_id) : span('ops-muted','—'),
           i.location || span('ops-muted','—'),
           String(i.quantity_on_hand),
           i.last_counted_at ? i.last_counted_at.slice(0,10) : span('ops-danger','Never'),
@@ -1956,6 +1977,61 @@ async function viewValidationsDue() {
     ));
   }
   wrap.appendChild(invCard);
+
+  // Supply requisition revalidation section
+  var openStatuses = ['submitted','approved','ordered','partially_received'];
+  var srParams = {};
+  if (_selectedPlatformIds.length) srParams.platform_ids = _selectedPlatformIds.join(',');
+  var allRequests = await API.supply.requests.list(srParams).catch(() => []);
+  var srDue = allRequests.filter(sr => {
+    if (!openStatuses.includes(sr.status)) return false;
+    if (!sr.revalidation_due) return true; // never revalidated
+    return new Date(sr.revalidation_due) <= weekEnd;
+  }).map(sr => ({
+    ...sr,
+    overdue: sr.revalidation_due ? new Date(sr.revalidation_due) < today : true
+  }));
+
+  var srCard = div('ops-card'); srCard.style.marginTop = '16px';
+  var srHdr = div('ops-card-header');
+  srHdr.appendChild(el('h3', {text: '🛒 Supply Requisitions — Revalidation Due (' + srDue.length + ')'}));
+  srCard.appendChild(srHdr);
+
+  if (!srDue.length) {
+    srCard.appendChild(el('p', {cls:'ops-empty', text:'No supply requisitions due for revalidation.'}));
+  } else {
+    srCard.appendChild(makeTable(
+      ['SRFQ #', 'Title', 'Priority', 'Status', 'Last Revalidated', 'Due', ''],
+      srDue.map(sr => {
+        var statusB = span('ops-badge '+(SR_STATUS_COLORS[sr.status]||'badge-gray'),
+          SR_STATUSES.find(s=>s[0]===sr.status)?.[1]||sr.status);
+        var overB = sr.overdue
+          ? span('ops-badge badge-red', 'OVERDUE')
+          : span('ops-badge badge-orange', 'DUE SOON');
+        var stillNeededBtn = btn('success ops-btn-sm', '✓ Still Needed', async () => {
+          await API.supply.requests.update(sr.id, {revalidate: 1});
+          viewValidationsDue();
+        });
+        var cancelBtn = btn('danger ops-btn-sm', '✕ Cancel', async () => {
+          if (!confirm('Cancel this supply request? This cannot be undone.')) return;
+          await API.supply.requests.update(sr.id, {status: 'cancelled'});
+          viewValidationsDue();
+        });
+        var actWrap = div(''); actWrap.style.cssText='display:flex;gap:4px;';
+        actWrap.appendChild(stillNeededBtn); actWrap.appendChild(cancelBtn);
+        return [
+          span('ops-mono', sr.rfq_number||'—'),
+          el('strong', {text: sr.title}),
+          span('ops-badge '+(sr.priority==='emergency'?'badge-red':sr.priority==='urgent'?'badge-orange':'badge-gray'), sr.priority),
+          statusB,
+          sr.last_revalidated_at ? sr.last_revalidated_at.slice(0,10) : span('ops-danger','Never'),
+          sr.revalidation_due ? sr.revalidation_due.slice(0,10) : span('ops-danger','Overdue'),
+          actWrap
+        ];
+      })
+    ));
+  }
+  wrap.appendChild(srCard);
 
   // Print styles
   var style = document.createElement('style');
@@ -2111,12 +2187,13 @@ async function viewSupplyRequestDetail(id) {
   setContent(wrap);
 }
 
-function showSupplyRequestForm(existing, onDone) {
-  var isEdit = !!existing;
+function showSupplyRequestForm(existing, onDone, prefill) {
+  var isEdit = !!(existing && existing.id);
+  var defaults = prefill || (isEdit ? existing : {});
   var body = div('ops-form-grid');
 
   var titleInp = el('input',{}); titleInp.className='ops-input'; titleInp.placeholder='Request title';
-  if (existing) titleInp.value = existing.title || '';
+  titleInp.value = defaults.title || '';
   body.appendChild(fg('Title *', titleInp, true));
 
   var statusSel = sel(SR_STATUSES, existing?.status || 'draft');
@@ -2147,7 +2224,10 @@ function showSupplyRequestForm(existing, onDone) {
       requested_by: reqByInp.value.trim(),
       notes:        notesInp.value.trim(),
     };
-    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
+    if (defaults.source_type) data.source_type = defaults.source_type;
+    if (defaults.source_id)   data.source_id   = defaults.source_id;
+    if (defaults.platform_id) data.platform_id = defaults.platform_id;
+    else if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
     if (isEdit) await API.supply.requests.update(existing.id, data);
     else await API.supply.requests.create(data);
     if (onDone) onDone();
@@ -2497,7 +2577,10 @@ function showInventoryForm(existing, onDone) {
     };
     if (!isEdit) data.quantity_on_hand = parseFloat(qtyInp.value) || 0;
     data.count_class = classSel.value;
-    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
+    if (defaults.source_type) data.source_type = defaults.source_type;
+    if (defaults.source_id)   data.source_id   = defaults.source_id;
+    if (defaults.platform_id) data.platform_id = defaults.platform_id;
+    else if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
     if (isEdit) await API.supply.inventory.update(existing.id, data);
     else await API.supply.inventory.create(data);
     if (onDone) onDone();
@@ -2601,19 +2684,23 @@ async function viewValidationsDue() {
     assetCard.appendChild(el('p', {cls:'ops-empty', text:'No asset verifications due this week.'}));
   } else {
     assetCard.appendChild(makeTable(
-      ['Asset ID', 'Name', 'Type', 'Location', 'Last Verified', 'Next Due', 'Verified By', 'Status', ''],
+      ['Asset ID', 'Name', 'Type', 'Platform', 'Location', 'Last Verified', 'Next Due', 'Verified By', 'Status', ''],
       assetsDue.map(a => {
         var statusB = a.overdue
           ? span('ops-badge badge-red', 'OVERDUE')
           : span('ops-badge badge-orange', 'DUE SOON');
         var verifyBtn2 = btn('success ops-btn-sm', '✓ Verify', async () => {
-          await API.assets.update(a.id, {verify: 1});
-          viewValidationsDue();
+          try {
+            await API.assets.update(a.id, {verify: 1});
+            alert('Asset verified successfully.');
+            viewValidationsDue();
+          } catch(e) { alert('Error: ' + e.message); }
         });
         return [
           span('ops-mono', a.asset_id_label || '#'+a.id),
           el('strong', {text: a.name}),
           span('ops-badge badge-gray', a.asset_type || '—'),
+          a.platform_id ? span('ops-badge badge-blue', 'Platform #'+a.platform_id) : span('ops-muted','—'),
           a.location || span('ops-muted','—'),
           a.last_verified_at ? a.last_verified_at.slice(0,10) : span('ops-danger','Never'),
           a.next_due ? a.next_due.toISOString().slice(0,10) : span('ops-danger','Overdue'),
@@ -2636,7 +2723,7 @@ async function viewValidationsDue() {
     invCard.appendChild(el('p', {cls:'ops-empty', text:'No inventory cycle counts due this week.'}));
   } else {
     invCard.appendChild(makeTable(
-      ['Item Name', 'Part #', 'Class', 'Location', 'On Hand', 'Last Counted', 'Next Due', 'Status', ''],
+      ['Item Name', 'Part #', 'Class', 'Platform', 'Location', 'On Hand', 'Last Counted', 'Next Due', 'Status', ''],
       invDue.map(i => {
         var statusB = i.overdue
           ? span('ops-badge badge-red', 'OVERDUE')
@@ -2659,6 +2746,7 @@ async function viewValidationsDue() {
           el('strong', {text: i.item_name}),
           i.part_number ? span('ops-mono ops-small', i.part_number) : span('ops-muted','—'),
           span('ops-badge badge-blue', COUNT_CLASS_LABELS[i.count_class] || i.count_class),
+          i.platform_id ? span('ops-badge badge-blue', 'Platform #'+i.platform_id) : span('ops-muted','—'),
           i.location || span('ops-muted','—'),
           String(i.quantity_on_hand),
           i.last_counted_at ? i.last_counted_at.slice(0,10) : span('ops-danger','Never'),
@@ -2670,6 +2758,61 @@ async function viewValidationsDue() {
     ));
   }
   wrap.appendChild(invCard);
+
+  // Supply requisition revalidation section
+  var openStatuses = ['submitted','approved','ordered','partially_received'];
+  var srParams = {};
+  if (_selectedPlatformIds.length) srParams.platform_ids = _selectedPlatformIds.join(',');
+  var allRequests = await API.supply.requests.list(srParams).catch(() => []);
+  var srDue = allRequests.filter(sr => {
+    if (!openStatuses.includes(sr.status)) return false;
+    if (!sr.revalidation_due) return true; // never revalidated
+    return new Date(sr.revalidation_due) <= weekEnd;
+  }).map(sr => ({
+    ...sr,
+    overdue: sr.revalidation_due ? new Date(sr.revalidation_due) < today : true
+  }));
+
+  var srCard = div('ops-card'); srCard.style.marginTop = '16px';
+  var srHdr = div('ops-card-header');
+  srHdr.appendChild(el('h3', {text: '🛒 Supply Requisitions — Revalidation Due (' + srDue.length + ')'}));
+  srCard.appendChild(srHdr);
+
+  if (!srDue.length) {
+    srCard.appendChild(el('p', {cls:'ops-empty', text:'No supply requisitions due for revalidation.'}));
+  } else {
+    srCard.appendChild(makeTable(
+      ['SRFQ #', 'Title', 'Priority', 'Status', 'Last Revalidated', 'Due', ''],
+      srDue.map(sr => {
+        var statusB = span('ops-badge '+(SR_STATUS_COLORS[sr.status]||'badge-gray'),
+          SR_STATUSES.find(s=>s[0]===sr.status)?.[1]||sr.status);
+        var overB = sr.overdue
+          ? span('ops-badge badge-red', 'OVERDUE')
+          : span('ops-badge badge-orange', 'DUE SOON');
+        var stillNeededBtn = btn('success ops-btn-sm', '✓ Still Needed', async () => {
+          await API.supply.requests.update(sr.id, {revalidate: 1});
+          viewValidationsDue();
+        });
+        var cancelBtn = btn('danger ops-btn-sm', '✕ Cancel', async () => {
+          if (!confirm('Cancel this supply request? This cannot be undone.')) return;
+          await API.supply.requests.update(sr.id, {status: 'cancelled'});
+          viewValidationsDue();
+        });
+        var actWrap = div(''); actWrap.style.cssText='display:flex;gap:4px;';
+        actWrap.appendChild(stillNeededBtn); actWrap.appendChild(cancelBtn);
+        return [
+          span('ops-mono', sr.rfq_number||'—'),
+          el('strong', {text: sr.title}),
+          span('ops-badge '+(sr.priority==='emergency'?'badge-red':sr.priority==='urgent'?'badge-orange':'badge-gray'), sr.priority),
+          statusB,
+          sr.last_revalidated_at ? sr.last_revalidated_at.slice(0,10) : span('ops-danger','Never'),
+          sr.revalidation_due ? sr.revalidation_due.slice(0,10) : span('ops-danger','Overdue'),
+          actWrap
+        ];
+      })
+    ));
+  }
+  wrap.appendChild(srCard);
 
   // Print styles
   var style = document.createElement('style');
@@ -2813,49 +2956,6 @@ async function viewSupplyRequestDetail(id) {
   setContent(wrap);
 }
 
-function showSupplyRequestForm(existing, onDone) {
-  var isEdit = !!existing;
-  var body = div('ops-form-grid');
-
-  var titleInp = el('input',{}); titleInp.className='ops-input'; titleInp.placeholder='Request title';
-  if (existing) titleInp.value = existing.title || '';
-  body.appendChild(fg('Title *', titleInp, true));
-
-  var statusSel = sel(SR_STATUSES, existing?.status || 'draft');
-  body.appendChild(fg('Status', statusSel));
-
-  var priSel = sel(SR_PRIORITIES, existing?.priority || 'routine');
-  body.appendChild(fg('Priority', priSel));
-
-  var neededInp = el('input',{}); neededInp.className='ops-input'; neededInp.type='date';
-  if (existing?.needed_by) neededInp.value = existing.needed_by.slice(0,10);
-  body.appendChild(fg('Needed By', neededInp));
-
-  var reqByInp = el('input',{}); reqByInp.className='ops-input'; reqByInp.placeholder='Requested by';
-  if (existing) reqByInp.value = existing.requested_by || '';
-  body.appendChild(fg('Requested By', reqByInp));
-
-  var notesInp = document.createElement('textarea'); notesInp.className='ops-input'; notesInp.rows=2;
-  if (existing) notesInp.value = existing.notes || '';
-  body.appendChild(fg('Notes', notesInp, true));
-
-  modal(isEdit ? 'Edit Supply Request' : 'New Supply Request', body, async () => {
-    if (!titleInp.value.trim()) throw new Error('Title is required.');
-    var data = {
-      title:        titleInp.value.trim(),
-      status:       statusSel.value,
-      priority:     priSel.value,
-      needed_by:    neededInp.value || '',
-      requested_by: reqByInp.value.trim(),
-      notes:        notesInp.value.trim(),
-    };
-    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
-    if (isEdit) await API.supply.requests.update(existing.id, data);
-    else await API.supply.requests.create(data);
-    if (onDone) onDone();
-  }, isEdit ? 'Save Changes' : 'Create Request');
-}
-
 function showSupplyItemForm(requestId, existing, onDone) {
   var isEdit = !!existing;
   var body = div('ops-form-grid');
@@ -3199,7 +3299,10 @@ function showInventoryForm(existing, onDone) {
     };
     if (!isEdit) data.quantity_on_hand = parseFloat(qtyInp.value) || 0;
     data.count_class = classSel.value;
-    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
+    if (defaults.source_type) data.source_type = defaults.source_type;
+    if (defaults.source_id)   data.source_id   = defaults.source_id;
+    if (defaults.platform_id) data.platform_id = defaults.platform_id;
+    else if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
     if (isEdit) await API.supply.inventory.update(existing.id, data);
     else await API.supply.inventory.create(data);
     if (onDone) onDone();
@@ -3439,7 +3542,10 @@ function showWorkPackageForm(existing, onDone) {
       rfq_due_date: rfqDueInp.value || '',
       notes:        notesInp.value.trim(),
     };
-    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
+    if (defaults.source_type) data.source_type = defaults.source_type;
+    if (defaults.source_id)   data.source_id   = defaults.source_id;
+    if (defaults.platform_id) data.platform_id = defaults.platform_id;
+    else if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
     if (isEdit) await API.workPackages.update(existing.id, data);
     else await API.workPackages.create(data);
     if (onDone) onDone();
@@ -4048,7 +4154,10 @@ function showAvailProjectForm(existing, onDone) {
       assigned_to: assignInp.value.trim(),
       approver:    approverInp.value.trim(),
     };
-    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
+    if (defaults.source_type) data.source_type = defaults.source_type;
+    if (defaults.source_id)   data.source_id   = defaults.source_id;
+    if (defaults.platform_id) data.platform_id = defaults.platform_id;
+    else if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
     if (isEdit) await API.availProjects.update(existing.id, data);
     else await API.availProjects.create(data);
     if (onDone) onDone();

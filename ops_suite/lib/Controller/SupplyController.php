@@ -117,6 +117,15 @@ class SupplyController extends Controller {
             $req->setApprovedBy($uid);
             $req->setApprovedAt(date('Y-m-d H:i:s'));
         }
+        // Revalidation actions
+        if (!empty($data['revalidate'])) {
+            $req->setLastRevalidatedAt(date('Y-m-d H:i:s'));
+            $req->setRevalidationDue(date('Y-m-d', strtotime('+90 days')));
+        }
+        // Set initial revalidation_due on submit
+        if (isset($data['status']) && $data['status'] === 'submitted' && $req->getRevalidationDue() === null) {
+            $req->setRevalidationDue(date('Y-m-d', strtotime('+90 days')));
+        }
         $req->setUpdatedAt(date('Y-m-d H:i:s'));
         return new DataResponse($this->mapper->update($req)->jsonSerialize());
     }
