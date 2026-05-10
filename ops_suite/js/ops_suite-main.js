@@ -67,6 +67,15 @@ var API = {
                   groups:     ()      => req('GET',  '/api/groups') },
   settings:     { get:        ()      => req('GET',  '/api/settings'),
                   save:       d       => req('POST', '/api/settings', d) },
+  workPackages: {
+                  list:       p         => req('GET',    '/api/work-packages'+qs(p)),
+                  get:        id        => req('GET',    '/api/work-packages/'+id),
+                  create:     d         => req('POST',   '/api/work-packages', d),
+                  update:     (id,d)    => req('PUT',    '/api/work-packages/'+id, d),
+                  destroy:    id        => req('DELETE', '/api/work-packages/'+id),
+                  addItem:    (id,d)    => req('POST',   '/api/work-packages/'+id+'/items', d),
+                  removeItem: (id,iid)  => req('DELETE', '/api/work-packages/'+id+'/items/'+iid),
+                },
   availProjects: {
                   list:       p         => req('GET',    '/api/avail-projects'+qs(p)),
                   get:        id        => req('GET',    '/api/avail-projects/'+id),
@@ -1793,6 +1802,368 @@ function showDocForm(modId, existing, onDone) {
   }, isEdit ? 'Save Changes' : 'Add Document');
 }
 
+/* ── Work Packages ── */
+const WP_STATUSES = [['draft','Draft'],['submitted','Submitted'],['approved','Approved'],['complete','Complete']];
+const WP_STATUS_COLORS = { draft:'badge-gray', submitted:'badge-blue', approved:'badge-teal', complete:'badge-green' };
+
+async function viewWorkPackages() {
+  var wrap = div(''); setContent(wrap);
+  var hdr = div('ops-page-header', [el('h2', {text: '📦 Work Packages'})]);
+  hdr.appendChild(btn('primary', '+ New Work Package', () => showWorkPackageForm(null, () => viewWorkPackages())));
+  wrap.appendChild(hdr);
+
+  var loading = span('ops-muted', 'Loading…'); wrap.appendChild(loading);
+  var p = {};
+  if (_selectedPlatformIds.length) p.platform_ids = _selectedPlatformIds.join(',');
+  var packages = await API.workPackages.list(p).catch(() => []);
+  loading.remove();
+
+  if (!packages.length) {
+    wrap.appendChild(el('p', {cls:'ops-empty', text:'No work packages yet.'}));
+    return;
+  }
+
+  var card = div('ops-card');
+  card.appendChild(makeTable(
+    ['RFQ #', 'Title', 'Status', 'Items', 'Est. Total', 'RFQ Due', ''],
+    packages.map(pkg => {
+      var statusB = span('ops-badge '+(WP_STATUS_COLORS[pkg.status]||'badge-gray'),
+        WP_STATUSES.find(s=>s[0]===pkg.status)?.[1]||pkg.status);
+      var viewBtn = btn('ops-btn-sm', '📦 View', () => navigate('wp-detail', pkg.id));
+      var editBtn = btn('ops-btn-sm', '✏', () => showWorkPackageForm(pkg, () => viewWorkPackages()));
+      var actWrap = div(''); actWrap.style.cssText='display:flex;gap:4px;';
+      actWrap.appendChild(viewBtn); actWrap.appendChild(editBtn);
+      var titleEl = el('strong', {text: pkg.title, style:'cursor:pointer;color:#38bdf8;'});
+      titleEl.onclick = () => navigate('wp-detail', pkg.id);
+      return [
+        span('ops-mono', pkg.rfq_number || '—'),
+        titleEl,
+        statusB,
+        span('ops-badge badge-gray', String(pkg.item_count || 0) + ' items'),
+        pkg.est_total > 0 ? fmt$(pkg.est_total) : span('ops-muted','—'),
+        pkg.rfq_due_date ? pkg.rfq_due_date.slice(0,10) : span('ops-muted','—'),
+        actWrap
+      ];
+    })
+  ));
+  wrap.appendChild(card);
+}
+
+async function viewWorkPackageDetail(id) {
+  setContent(el('div', {cls:'ops-empty', text:'Loading…'}));
+  var pkg = await API.workPackages.get(id).catch(() => null);
+  if (!pkg) return;
+
+  var wrap = div('');
+  var hdr = div('ops-page-header');
+  hdr.appendChild(btn('', '← Work Packages', () => navigate('work-packages')));
+  hdr.appendChild(el('h2', {text: pkg.title}));
+  hdr.appendChild(span('ops-badge '+(WP_STATUS_COLORS[pkg.status]||'badge-gray'),
+    WP_STATUSES.find(s=>s[0]===pkg.status)?.[1]||pkg.status));
+  hdr.appendChild(btn('', '✏ Edit', () => showWorkPackageForm(pkg, () => viewWorkPackageDetail(id))));
+  hdr.appendChild(btn('primary', '+ Add Item', () => showAddWPItemForm(pkg, () => viewWorkPackageDetail(id))));
+  hdr.appendChild(btn('success', '📄 Export RFQ', () => exportRFQ(pkg)));
+  wrap.appendChild(hdr);
+
+  // Info bar
+  var infoBar = div('');
+  infoBar.style.cssText = 'display:flex;gap:20px;padding:12px 0;border-bottom:1px solid #2e3650;margin-bottom:16px;font-size:13px;color:#94a3b8;flex-wrap:wrap;';
+  infoBar.appendChild(el('span', {text: '🔖 RFQ: ' + (pkg.rfq_number || '—')}));
+  if (pkg.rfq_due_date) infoBar.appendChild(el('span', {text: '📅 Due: ' + pkg.rfq_due_date.slice(0,10)}));
+  if (pkg.assigned_to) infoBar.appendChild(el('span', {text: '👤 ' + pkg.assigned_to}));
+  if (pkg.approver)    infoBar.appendChild(el('span', {text: '✓ Approver: ' + pkg.approver}));
+  wrap.appendChild(infoBar);
+
+  var items = pkg.items || [];
+  var estTotal = pkg.est_total || 0;
+
+  // Cost summary card
+  if (estTotal > 0) {
+    var costCard = div('ops-card'); costCard.style.marginBottom = '16px';
+    costCard.appendChild(div('ops-card-header', [el('h3', {text:'Cost Summary'})]));
+    var cg = div('ops-cost-grid');
+    var pmItems  = items.filter(i => i.item_type === 'pm');
+    var modItems = items.filter(i => i.item_type === 'modernization');
+    var modTotal = modItems.reduce((s,i) => s + (i.linked_est_total||0), 0);
+    [
+      ['PM Items',      String(pmItems.length) + ' procedures', 'ops-blue'],
+      ['Mod Items',     String(modItems.length) + ' modernizations', 'ops-purple'],
+      ['Est. Total',    fmt$(estTotal), 'ops-warn'],
+    ].forEach(([l,v,c]) => {
+      var cell = div('ops-cost-cell');
+      cell.appendChild(el('div', {cls:'ops-cost-label', text:l}));
+      cell.appendChild(el('div', {cls:'ops-cost-value '+c, text:String(v)}));
+      cg.appendChild(cell);
+    });
+    costCard.appendChild(cg);
+    wrap.appendChild(costCard);
+  }
+
+  // Items table
+  var tableCard = div('ops-card');
+  tableCard.appendChild(div('ops-card-header', [el('h3', {text:'Package Items (' + items.length + ')'})]));
+
+  if (!items.length) {
+    tableCard.appendChild(el('p', {cls:'ops-empty', text:'No items yet. Add PMs or modernizations.'}));
+  } else {
+    tableCard.appendChild(makeTable(
+      ['Type', 'Title', 'Est. Hours', 'Est. Cost', 'Target', ''],
+      items.map(item => {
+        var typeChip = span('ops-badge', item.item_type === 'pm' ? 'PM' : 'MOD');
+        typeChip.style.cssText = 'background:'+(item.item_type==='pm'?'rgba(2,132,199,0.2)':'rgba(124,58,237,0.2)')+';color:'+(item.item_type==='pm'?'#38bdf8':'#a78bfa')+';border:1px solid '+(item.item_type==='pm'?'#0284c7':'#7c3aed')+';';
+        var delBtn = btn('danger ops-btn-sm', '✕', async () => {
+          if (!confirm('Remove this item from the package?')) return;
+          await API.workPackages.removeItem(id, item.id);
+          viewWorkPackageDetail(id);
+        });
+        var title = item.linked_title || item.notes || '—';
+        var hours = item.linked_est_hours ? item.linked_est_hours + 'h' : '—';
+        var cost  = item.linked_est_total > 0 ? fmt$(item.linked_est_total) : '—';
+        var target = (item.linked_next_due || item.linked_target || '—');
+        if (target !== '—') target = target.slice(0,10);
+        return [typeChip, el('strong',{text:title}), hours, cost, target, delBtn];
+      })
+    ));
+  }
+  wrap.appendChild(tableCard);
+
+  // Description / notes
+  if (pkg.description || pkg.notes) {
+    var notesCard = div('ops-card'); notesCard.style.marginTop = '16px';
+    if (pkg.description) {
+      notesCard.appendChild(div('ops-section-label', [document.createTextNode('Scope of Work')]));
+      notesCard.appendChild(el('p', {cls:'ops-notes', text:pkg.description}));
+    }
+    if (pkg.notes) {
+      notesCard.appendChild(div('ops-section-label', [document.createTextNode('Notes')]));
+      notesCard.appendChild(el('p', {cls:'ops-notes', text:pkg.notes}));
+    }
+    wrap.appendChild(notesCard);
+  }
+
+  setContent(wrap);
+}
+
+function showWorkPackageForm(existing, onDone) {
+  var isEdit = !!existing;
+  var body = div('ops-form-grid');
+
+  var titleInp = el('input',{}); titleInp.className='ops-input'; titleInp.placeholder='Work package title';
+  if (existing) titleInp.value = existing.title || '';
+  body.appendChild(fg('Title *', titleInp, true));
+
+  var descInp = document.createElement('textarea'); descInp.className='ops-input'; descInp.rows=3;
+  descInp.placeholder='Scope of work description — this will appear in the RFQ';
+  if (existing) descInp.value = existing.description || '';
+  body.appendChild(fg('Scope of Work', descInp, true));
+
+  var statusSel = sel(WP_STATUSES, existing?.status || 'draft');
+  body.appendChild(fg('Status', statusSel));
+
+  var typeSel = sel([['mixed','Mixed (PMs + Modernizations)'],['pm_only','PMs Only'],['modernization_only','Modernizations Only']], existing?.package_type || 'mixed');
+  body.appendChild(fg('Package Type', typeSel));
+
+  var assignInp = el('input',{}); assignInp.className='ops-input'; assignInp.placeholder='Assigned user';
+  if (existing) assignInp.value = existing.assigned_to || '';
+  body.appendChild(fg('Assigned To', assignInp));
+
+  var approverInp = el('input',{}); approverInp.className='ops-input'; approverInp.placeholder='Approver';
+  if (existing) approverInp.value = existing.approver || '';
+  body.appendChild(fg('Approver', approverInp));
+
+  var rfqDueInp = el('input',{}); rfqDueInp.className='ops-input'; rfqDueInp.type='date';
+  if (existing?.rfq_due_date) rfqDueInp.value = existing.rfq_due_date.slice(0,10);
+  body.appendChild(fg('RFQ Response Due Date', rfqDueInp));
+
+  var notesInp = document.createElement('textarea'); notesInp.className='ops-input'; notesInp.rows=2;
+  notesInp.placeholder='Internal notes';
+  if (existing) notesInp.value = existing.notes || '';
+  body.appendChild(fg('Notes', notesInp, true));
+
+  modal(isEdit ? 'Edit Work Package' : 'New Work Package', body, async () => {
+    if (!titleInp.value.trim()) throw new Error('Title is required.');
+    var data = {
+      title:        titleInp.value.trim(),
+      description:  descInp.value.trim(),
+      status:       statusSel.value,
+      package_type: typeSel.value,
+      assigned_to:  assignInp.value.trim(),
+      approver:     approverInp.value.trim(),
+      rfq_due_date: rfqDueInp.value || '',
+      notes:        notesInp.value.trim(),
+    };
+    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
+    if (isEdit) await API.workPackages.update(existing.id, data);
+    else await API.workPackages.create(data);
+    if (onDone) onDone();
+  }, isEdit ? 'Save Changes' : 'Create Work Package');
+}
+
+async function showAddWPItemForm(pkg, onDone) {
+  var body = div('ops-form-grid');
+
+  var typeSel = sel([['pm','PM Procedure'],['modernization','Modernization']], 'pm');
+  body.appendChild(fg('Item Type', typeSel));
+
+  var itemWrap = div('');
+  var itemSel = el('select',{cls:'ops-select'});
+  itemSel.appendChild(el('option',{value:'',text:'— Select item —'}));
+  itemWrap.appendChild(itemSel);
+  body.appendChild(fg('Item', itemWrap));
+
+  var notesInp = el('input',{}); notesInp.className='ops-input'; notesInp.placeholder='Notes (optional)';
+  body.appendChild(fg('Notes', notesInp));
+
+  async function loadItems() {
+    itemSel.innerHTML = '<option value="">Loading…</option>';
+    var type = typeSel.value;
+    var items = type === 'pm'
+      ? await API.procedures.list({})
+      : await API.modernizations.list({});
+    itemSel.innerHTML = '<option value="">— Select item —</option>';
+    items.forEach(i => {
+      var label = i.name || i.title || '#'+i.id;
+      itemSel.appendChild(el('option',{value:String(i.id), text:label}));
+    });
+  }
+  typeSel.onchange = loadItems;
+  await loadItems();
+
+  modal('Add Item to Work Package', body, async () => {
+    if (!itemSel.value) throw new Error('Please select an item.');
+    var result = await API.workPackages.addItem(pkg.id, {
+      item_type: typeSel.value,
+      item_id:   parseInt(itemSel.value),
+      notes:     notesInp.value.trim(),
+    });
+    if (result.message && result.message.includes('already in work package')) {
+      throw new Error(result.message);
+    }
+    if (onDone) onDone();
+  }, 'Add Item');
+}
+
+function exportRFQ(pkg) {
+  // Build RFQ HTML and open in new window for printing
+  var items = pkg.items || [];
+  var today = new Date().toLocaleDateString('en-US', {year:'numeric',month:'long',day:'numeric'});
+  var html = `<!DOCTYPE html>
+<html>
+<head>
+<title>RFQ ${pkg.rfq_number}</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; color: #333; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  h2 { font-size: 16px; color: #555; border-bottom: 2px solid #333; padding-bottom: 6px; margin-top: 28px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+  .rfq-meta { text-align: right; font-size: 13px; color: #555; }
+  .rfq-meta strong { font-size: 18px; color: #333; display: block; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  th { background: #f5f5f5; padding: 8px; text-align: left; border: 1px solid #ddd; font-weight: 700; }
+  td { padding: 8px; border: 1px solid #ddd; }
+  tr:nth-child(even) { background: #fafafa; }
+  .total-row { font-weight: 700; background: #f0f0f0; }
+  .sig-block { margin-top: 48px; display: flex; gap: 40px; }
+  .sig-line { flex: 1; border-top: 1px solid #333; padding-top: 6px; font-size: 12px; color: #555; }
+  .footer { margin-top: 40px; font-size: 11px; color: #999; border-top: 1px solid #ddd; padding-top: 12px; }
+  @media print { body { margin: 20px; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>Request for Quote</h1>
+    <div style="font-size:14px;color:#555;">Alto Technologies LLC</div>
+  </div>
+  <div class="rfq-meta">
+    <strong>${pkg.rfq_number}</strong>
+    Date Issued: ${today}<br>
+    ${pkg.rfq_due_date ? 'Response Due: ' + pkg.rfq_due_date.slice(0,10) : ''}
+  </div>
+</div>
+
+<h2>Project Information</h2>
+<table>
+  <tr><th style="width:30%">Work Package</th><td>${pkg.title}</td></tr>
+  <tr><th>Prepared By</th><td>${pkg.assigned_to || '—'}</td></tr>
+  <tr><th>Approver</th><td>${pkg.approver || '—'}</td></tr>
+  <tr><th>Status</th><td>${pkg.status.charAt(0).toUpperCase()+pkg.status.slice(1)}</td></tr>
+</table>
+
+<h2>Scope of Work</h2>
+<p style="font-size:13px;line-height:1.6;">${pkg.description || 'See line items below.'}</p>
+
+<h2>Line Items</h2>
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Type</th>
+      <th>Description</th>
+      <th>Est. Hours</th>
+      <th>Est. Parts</th>
+      <th>Est. Labor</th>
+      <th>Est. Contractor</th>
+      <th>Est. Total</th>
+    </tr>
+  </thead>
+  <tbody>`;
+
+  var grandTotal = 0;
+  items.forEach((item, idx) => {
+    var type  = item.item_type === 'pm' ? 'PM Procedure' : 'Modernization';
+    var title = item.linked_title || '—';
+    var hours = item.linked_est_hours ? item.linked_est_hours + 'h' : '—';
+    var parts = item.linked_est_parts > 0 ? '$' + Number(item.linked_est_parts).toFixed(2) : '—';
+    var labor = item.linked_est_labor > 0 ? '$' + Number(item.linked_est_labor).toFixed(2) : '—';
+    var contr = item.linked_est_contractor > 0 ? '$' + Number(item.linked_est_contractor).toFixed(2) : '—';
+    var total = item.linked_est_total || 0;
+    grandTotal += total;
+    html += `<tr>
+      <td>${idx+1}</td>
+      <td>${type}</td>
+      <td>${title}</td>
+      <td>${hours}</td>
+      <td>${parts}</td>
+      <td>${labor}</td>
+      <td>${contr}</td>
+      <td>${total > 0 ? '$'+total.toFixed(2) : '—'}</td>
+    </tr>`;
+  });
+
+  html += `<tr class="total-row">
+    <td colspan="7" style="text-align:right;">ESTIMATED TOTAL</td>
+    <td>$${grandTotal.toFixed(2)}</td>
+  </tr>
+  </tbody>
+</table>
+
+<h2>Terms & Conditions</h2>
+<p style="font-size:12px;line-height:1.6;color:#555;">
+Vendors are requested to provide a firm fixed-price quote for the scope of work described above.
+Quotes must be valid for 90 days from the date of submission. All work shall be performed in
+accordance with applicable codes, standards, and regulations. The requesting organization reserves
+the right to accept or reject any or all quotes.
+</p>
+
+<div class="sig-block">
+  <div class="sig-line">Prepared By: ${pkg.assigned_to || '_______________'}<br>Date: ${today}</div>
+  <div class="sig-line">Approved By: ${pkg.approver || '_______________'}<br>Date: _______________</div>
+  <div class="sig-line">Vendor Signature: _______________<br>Date: _______________</div>
+</div>
+
+<div class="footer">
+  ${pkg.rfq_number} | Generated by Maintain Ops Suite | Alto Technologies LLC | ${today}
+</div>
+</body>
+</html>`;
+
+  var win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
+}
+
 /* ── Availability Projects ── */
 const AVAIL_STATUSES = [
   ['planning','Planning'],['approved','Approved'],['in_progress','In Progress'],['complete','Complete']
@@ -2438,6 +2809,7 @@ function buildSidebar() {
     {label:'Deficiencies',   route:'deficiencies',  icon:'⚠', section:'Deficiencies'},
     {label:'Modernizations',  route:'modernizations', icon:'🔧', section:'Modernization'},
     {label:'Avail Projects',   route:'avail-projects',  icon:'📅', section:'Modernization'},
+    {label:'Work Packages',    route:'work-packages',   icon:'📦', section:'Modernization'},
     {label:'Settings',       route:'settings',      icon:'⚙', section:'Admin'},
     {label:'User Manual',      route:'manual',        icon:'📖', section:'Admin'},
     {label:'Platforms',       route:'platforms',     icon:'🌐', section:'Admin'},
@@ -2472,6 +2844,8 @@ async function dispatch(route, param) {
     else if (route==='deficiencies')  await viewDeficiencies();
     else if (route==='modernizations') await viewModernizations();
     else if (route==='avail-projects')  await viewAvailProjects();
+    else if (route==='work-packages')   await viewWorkPackages();
+    else if (route==='wp-detail')       await viewWorkPackageDetail(parseInt(param));
     else if (route==='avail-detail')    await viewAvailProjectDetail(parseInt(param));
     else if (route==='def-detail')    await viewDefDetail(parseInt(param));
     else if (route==='settings')      await viewSettings();
