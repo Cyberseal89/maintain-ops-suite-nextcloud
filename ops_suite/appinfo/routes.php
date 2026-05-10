@@ -46,6 +46,15 @@ return [
         ['name' => 'settings#get',  'url' => '/api/settings', 'verb' => 'GET'],
         ['name' => 'settings#save', 'url' => '/api/settings', 'verb' => 'POST'],
 
+        // ── Availability Projects ──────────────────────────────────
+        ['name' => 'availProject#index',      'url' => '/api/avail-projects',                       'verb' => 'GET'],
+        ['name' => 'availProject#show',       'url' => '/api/avail-projects/{id}',                  'verb' => 'GET'],
+        ['name' => 'availProject#create',     'url' => '/api/avail-projects',                       'verb' => 'POST'],
+        ['name' => 'availProject#update',     'url' => '/api/avail-projects/{id}',                  'verb' => 'PUT'],
+        ['name' => 'availProject#destroy',    'url' => '/api/avail-projects/{id}',                  'verb' => 'DELETE'],
+        ['name' => 'availProject#addItem',    'url' => '/api/avail-projects/{id}/items',            'verb' => 'POST'],
+        ['name' => 'availProject#updateItem', 'url' => '/api/avail-projects/{id}/items/{itemId}',   'verb' => 'PUT'],
+        ['name' => 'availProject#deleteItem', 'url' => '/api/avail-projects/{id}/items/{itemId}',   'verb' => 'DELETE'],
         // ── Modernizations ────────────────────────────────────────
         ['name' => 'modernization#index',     'url' => '/api/modernizations',                      'verb' => 'GET'],
         ['name' => 'modernization#show',      'url' => '/api/modernizations/{id}',                 'verb' => 'GET'],
