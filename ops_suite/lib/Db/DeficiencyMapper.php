@@ -15,10 +15,10 @@ class DeficiencyMapper extends QBMapper {
     private function addPlatformFilter(\OCP\DB\QueryBuilder\IQueryBuilder $qb, array $platformIds): void {
         if (empty($platformIds)) return;
         $qb->innerJoin(
-            $this->getTableName(),
-            'ops_assets',
+            'oc_ops_deficiencies',
+            'oc_ops_assets',
             'a',
-            $qb->expr()->eq($this->getTableName().'.asset_id', 'a.id')
+            $qb->expr()->eq('oc_ops_deficiencies.asset_id', 'a.id')
         );
         $qb->andWhere($qb->expr()->in('a.platform_id', $qb->createNamedParameter($platformIds, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_INT_ARRAY)));
     }
