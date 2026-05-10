@@ -1420,6 +1420,46 @@ async function viewPlatforms() {
   wrap.appendChild(card);
 }
 
+/* ── Platform Form ── */
+function showPlatformForm(existing, onDone) {
+  var isEdit = !!existing;
+  var body = div('ops-form-grid');
+
+  var nameInp = el('input', {}); nameInp.className = 'ops-input'; nameInp.placeholder = 'e.g. Pensacola';
+  if (existing) nameInp.value = existing.name || '';
+  body.appendChild(fg('Platform Name *', nameInp));
+
+  var locInp = el('input', {}); locInp.className = 'ops-input'; locInp.placeholder = 'e.g. Pensacola, FL';
+  if (existing) locInp.value = existing.location || '';
+  body.appendChild(fg('Location', locInp));
+
+  var descInp = document.createElement('textarea'); descInp.className = 'ops-input'; descInp.rows = 2;
+  descInp.placeholder = 'Description';
+  if (existing) descInp.value = existing.description || '';
+  body.appendChild(fg('Description', descInp));
+
+  var groupInp = el('input', {}); groupInp.className = 'ops-input'; groupInp.placeholder = 'e.g. platform_pensacola';
+  if (existing) groupInp.value = existing.group_name || '';
+  body.appendChild(fg('Nextcloud Group Name', groupInp, false,
+    'Users in this Nextcloud group will have access to this platform. Leave blank for all users.'));
+
+  modal(isEdit ? 'Edit Platform' : 'New Platform', body, async () => {
+    if (!nameInp.value.trim()) throw new Error('Platform name is required.');
+    var data = {
+      name:        nameInp.value.trim(),
+      location:    locInp.value.trim(),
+      description: descInp.value.trim(),
+      group_name:  groupInp.value.trim(),
+    };
+    if (isEdit) {
+      await API.platforms.update(existing.id, data);
+    } else {
+      await API.platforms.create(data);
+    }
+    if (onDone) onDone();
+  }, isEdit ? 'Save Changes' : 'Create Platform');
+}
+
 /* ── Settings ── */
 async function viewSettings() {
   var wrap=div(''); setContent(wrap);
