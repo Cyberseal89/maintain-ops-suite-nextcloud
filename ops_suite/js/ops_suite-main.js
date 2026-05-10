@@ -2343,6 +2343,39 @@ function showPlatformForm(existing, onDone) {
   }, isEdit ? 'Save Changes' : 'Create Platform');
 }
 
+/* ── User Manual ── */
+async function viewUserManual() {
+  var wrap = div(''); setContent(wrap);
+  wrap.appendChild(div('ops-page-header', [el('h2', {text: '📖 User Manual'})]));
+
+  var loading = span('ops-muted', 'Loading manual…'); wrap.appendChild(loading);
+
+  try {
+    var response = await fetch(ncUrl('/user-manual'));
+    var json = await response.json();
+    var html = json.html || '';
+    loading.remove();
+    var content2 = div('ops-card');
+    content2.style.cssText = 'padding:32px;max-width:900px;line-height:1.7;';
+    content2.innerHTML = html;
+    // Style headings and tables
+    content2.querySelectorAll('h1').forEach(h => h.style.cssText='font-size:24px;font-weight:900;color:#e2e8f0;margin:0 0 16px;');
+    content2.querySelectorAll('h2').forEach(h => h.style.cssText='font-size:18px;font-weight:800;color:#38bdf8;margin:32px 0 12px;border-bottom:1px solid #2e3650;padding-bottom:8px;');
+    content2.querySelectorAll('h3').forEach(h => h.style.cssText='font-size:15px;font-weight:700;color:#e2e8f0;margin:20px 0 8px;');
+    content2.querySelectorAll('p').forEach(p => p.style.cssText='color:#94a3b8;margin:0 0 12px;');
+    content2.querySelectorAll('li').forEach(li => li.style.cssText='color:#94a3b8;margin:4px 0;');
+    content2.querySelectorAll('table').forEach(t => t.style.cssText='width:100%;border-collapse:collapse;margin:12px 0;');
+    content2.querySelectorAll('th').forEach(th => th.style.cssText='text-align:left;padding:8px;background:#0f172a;color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:0.7px;');
+    content2.querySelectorAll('td').forEach(td => td.style.cssText='padding:8px;border-bottom:1px solid #2e3650;color:#94a3b8;font-size:13px;');
+    content2.querySelectorAll('code').forEach(c => c.style.cssText='background:#0f172a;padding:2px 6px;border-radius:4px;font-size:12px;color:#38bdf8;');
+    content2.querySelectorAll('strong').forEach(s => s.style.color='#e2e8f0');
+    wrap.appendChild(content2);
+  } catch(e) {
+    loading.remove();
+    wrap.appendChild(el('p', {cls:'ops-empty', text:'Could not load manual: ' + e.message}));
+  }
+}
+
 /* ── Settings ── */
 async function viewSettings() {
   var wrap=div(''); setContent(wrap);
@@ -2407,6 +2440,7 @@ function buildSidebar() {
     {label:'Modernizations',  route:'modernizations', icon:'🔧', section:'Modernization'},
     {label:'Avail Projects',   route:'avail-projects',  icon:'📅', section:'Modernization'},
     {label:'Settings',       route:'settings',      icon:'⚙', section:'Admin'},
+    {label:'User Manual',      route:'manual',        icon:'📖', section:'Admin'},
     {label:'Platforms',       route:'platforms',     icon:'🌐', section:'Admin'},
   ];
   var lastSection='';
@@ -2442,6 +2476,7 @@ async function dispatch(route, param) {
     else if (route==='avail-detail')    await viewAvailProjectDetail(parseInt(param));
     else if (route==='def-detail')    await viewDefDetail(parseInt(param));
     else if (route==='settings')      await viewSettings();
+    else if (route==='manual')         await viewUserManual();
     else if (route==='platforms')     await viewPlatforms();
     else                              await viewDashboard();
   } catch(e) {

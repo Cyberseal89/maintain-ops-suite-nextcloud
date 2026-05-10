@@ -46,6 +46,7 @@ return [
         ['name' => 'settings#get',  'url' => '/api/settings', 'verb' => 'GET'],
         ['name' => 'settings#save', 'url' => '/api/settings', 'verb' => 'POST'],
 
+        ['name' => 'page#manual',  'url' => '/user-manual', 'verb' => 'GET'],
         // ── Availability Projects ──────────────────────────────────
         ['name' => 'availProject#index',      'url' => '/api/avail-projects',                       'verb' => 'GET'],
         ['name' => 'availProject#show',       'url' => '/api/avail-projects/{id}',                  'verb' => 'GET'],
