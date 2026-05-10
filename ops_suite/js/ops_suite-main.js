@@ -1940,7 +1940,7 @@ async function viewSupplyRequestDetail(id) {
     tableCard.appendChild(el('p', {cls:'ops-empty', text:'No items yet. Add parts or materials.'}));
   } else {
     tableCard.appendChild(makeTable(
-      ['Item Name', 'Part #', 'Qty Req', 'Qty Rec', 'Unit Cost Est', 'Est Total', 'Vendor', 'Status', ''],
+      ['Item Name', 'Part #', 'NSN', 'Manufacturer', 'UOM', 'Qty Req', 'Qty Rec', 'Est Total', 'Status', ''],
       items.map(item => {
         var statB = span('ops-badge '+(item.status==='received'?'badge-green':item.status==='ordered'?'badge-blue':'badge-gray'), item.status);
         var editBtn = btn('ops-btn-sm', '✏', () => showSupplyItemForm(id, item, () => viewSupplyRequestDetail(id)));
@@ -1954,11 +1954,12 @@ async function viewSupplyRequestDetail(id) {
         return [
           el('strong', {text: item.item_name}),
           item.part_number ? span('ops-mono ops-small', item.part_number) : span('ops-muted','—'),
+          item.nsn ? span('ops-mono ops-small', item.nsn) : span('ops-muted','—'),
+          item.manufacturer || span('ops-muted','—'),
+          item.unit_of_measure || 'each',
           item.quantity_requested,
           item.quantity_received || '0',
-          item.unit_cost_est > 0 ? fmt$(item.unit_cost_est) : span('ops-muted','—'),
           item.est_total > 0 ? fmt$(item.est_total) : span('ops-muted','—'),
-          item.vendor || span('ops-muted','—'),
           statB, actWrap
         ];
       })
@@ -2040,6 +2041,21 @@ function showSupplyItemForm(requestId, existing, onDone) {
   if (existing) vendorInp.value = existing.vendor || '';
   body.appendChild(fg('Vendor', vendorInp));
 
+  var mfgInp = el('input',{}); mfgInp.className='ops-input'; mfgInp.placeholder='Manufacturer';
+  if (existing) mfgInp.value = existing.manufacturer || '';
+  body.appendChild(fg('Manufacturer', mfgInp));
+
+  var nsnInp = el('input',{}); nsnInp.className='ops-input'; nsnInp.placeholder='NSN (e.g. 5945-01-234-5678)';
+  if (existing) nsnInp.value = existing.nsn || '';
+  body.appendChild(fg('NSN', nsnInp));
+
+  var cageInp = el('input',{}); cageInp.className='ops-input'; cageInp.placeholder='CAGE Code';
+  if (existing) cageInp.value = existing.cage_code || '';
+  body.appendChild(fg('CAGE Code', cageInp));
+
+  var uomSel = sel([['each','Each'],['box','Box'],['lot','Lot'],['gallon','Gallon'],['liter','Liter'],['feet','Feet'],['meter','Meter'],['pair','Pair'],['set','Set'],['roll','Roll']], existing?.unit_of_measure || 'each');
+  body.appendChild(fg('Unit of Measure', uomSel));
+
   if (isEdit) {
     var qtyRecInp = el('input',{}); qtyRecInp.className='ops-input'; qtyRecInp.type='number'; qtyRecInp.placeholder='0';
     qtyRecInp.value = existing.quantity_received || '0';
@@ -2066,6 +2082,10 @@ function showSupplyItemForm(requestId, existing, onDone) {
       quantity_requested: parseFloat(qtyInp.value) || 1,
       unit_cost_est:      parseFloat(unitCostInp.value) || 0,
       vendor:             vendorInp.value.trim(),
+      manufacturer:       mfgInp.value.trim(),
+      nsn:                nsnInp.value.trim(),
+      cage_code:          cageInp.value.trim(),
+      unit_of_measure:    uomSel.value,
       notes:              notesInp2.value.trim(),
     };
     if (isEdit) {
@@ -2136,7 +2156,10 @@ function exportSupplyRFQ(sr) {
       <th>#</th>
       <th>Item Name</th>
       <th>Part Number</th>
-      <th>Description</th>
+      <th>NSN</th>
+      <th>Manufacturer</th>
+      <th>CAGE</th>
+      <th>UOM</th>
       <th>Qty</th>
       <th>Est. Unit Cost</th>
       <th>Est. Total</th>
@@ -2288,6 +2311,21 @@ function showInventoryForm(existing, onDone) {
   var vendorInp = el('input',{}); vendorInp.className='ops-input'; vendorInp.placeholder='Preferred vendor';
   if (existing) vendorInp.value = existing.vendor || '';
   body.appendChild(fg('Vendor', vendorInp));
+
+  var mfgInp = el('input',{}); mfgInp.className='ops-input'; mfgInp.placeholder='Manufacturer';
+  if (existing) mfgInp.value = existing.manufacturer || '';
+  body.appendChild(fg('Manufacturer', mfgInp));
+
+  var nsnInp = el('input',{}); nsnInp.className='ops-input'; nsnInp.placeholder='NSN (e.g. 5945-01-234-5678)';
+  if (existing) nsnInp.value = existing.nsn || '';
+  body.appendChild(fg('NSN', nsnInp));
+
+  var cageInp = el('input',{}); cageInp.className='ops-input'; cageInp.placeholder='CAGE Code';
+  if (existing) cageInp.value = existing.cage_code || '';
+  body.appendChild(fg('CAGE Code', cageInp));
+
+  var uomSel = sel([['each','Each'],['box','Box'],['lot','Lot'],['gallon','Gallon'],['liter','Liter'],['feet','Feet'],['meter','Meter'],['pair','Pair'],['set','Set'],['roll','Roll']], existing?.unit_of_measure || 'each');
+  body.appendChild(fg('Unit of Measure', uomSel));
 
   var leadInp = el('input',{}); leadInp.className='ops-input'; leadInp.type='number'; leadInp.placeholder='0';
   if (existing) leadInp.value = existing.lead_time_days || '';
@@ -2464,7 +2502,7 @@ async function viewSupplyRequestDetail(id) {
     tableCard.appendChild(el('p', {cls:'ops-empty', text:'No items yet. Add parts or materials.'}));
   } else {
     tableCard.appendChild(makeTable(
-      ['Item Name', 'Part #', 'Qty Req', 'Qty Rec', 'Unit Cost Est', 'Est Total', 'Vendor', 'Status', ''],
+      ['Item Name', 'Part #', 'NSN', 'Manufacturer', 'UOM', 'Qty Req', 'Qty Rec', 'Est Total', 'Status', ''],
       items.map(item => {
         var statB = span('ops-badge '+(item.status==='received'?'badge-green':item.status==='ordered'?'badge-blue':'badge-gray'), item.status);
         var editBtn = btn('ops-btn-sm', '✏', () => showSupplyItemForm(id, item, () => viewSupplyRequestDetail(id)));
@@ -2478,11 +2516,12 @@ async function viewSupplyRequestDetail(id) {
         return [
           el('strong', {text: item.item_name}),
           item.part_number ? span('ops-mono ops-small', item.part_number) : span('ops-muted','—'),
+          item.nsn ? span('ops-mono ops-small', item.nsn) : span('ops-muted','—'),
+          item.manufacturer || span('ops-muted','—'),
+          item.unit_of_measure || 'each',
           item.quantity_requested,
           item.quantity_received || '0',
-          item.unit_cost_est > 0 ? fmt$(item.unit_cost_est) : span('ops-muted','—'),
           item.est_total > 0 ? fmt$(item.est_total) : span('ops-muted','—'),
-          item.vendor || span('ops-muted','—'),
           statB, actWrap
         ];
       })
@@ -2564,6 +2603,21 @@ function showSupplyItemForm(requestId, existing, onDone) {
   if (existing) vendorInp.value = existing.vendor || '';
   body.appendChild(fg('Vendor', vendorInp));
 
+  var mfgInp = el('input',{}); mfgInp.className='ops-input'; mfgInp.placeholder='Manufacturer';
+  if (existing) mfgInp.value = existing.manufacturer || '';
+  body.appendChild(fg('Manufacturer', mfgInp));
+
+  var nsnInp = el('input',{}); nsnInp.className='ops-input'; nsnInp.placeholder='NSN (e.g. 5945-01-234-5678)';
+  if (existing) nsnInp.value = existing.nsn || '';
+  body.appendChild(fg('NSN', nsnInp));
+
+  var cageInp = el('input',{}); cageInp.className='ops-input'; cageInp.placeholder='CAGE Code';
+  if (existing) cageInp.value = existing.cage_code || '';
+  body.appendChild(fg('CAGE Code', cageInp));
+
+  var uomSel = sel([['each','Each'],['box','Box'],['lot','Lot'],['gallon','Gallon'],['liter','Liter'],['feet','Feet'],['meter','Meter'],['pair','Pair'],['set','Set'],['roll','Roll']], existing?.unit_of_measure || 'each');
+  body.appendChild(fg('Unit of Measure', uomSel));
+
   if (isEdit) {
     var qtyRecInp = el('input',{}); qtyRecInp.className='ops-input'; qtyRecInp.type='number'; qtyRecInp.placeholder='0';
     qtyRecInp.value = existing.quantity_received || '0';
@@ -2590,6 +2644,10 @@ function showSupplyItemForm(requestId, existing, onDone) {
       quantity_requested: parseFloat(qtyInp.value) || 1,
       unit_cost_est:      parseFloat(unitCostInp.value) || 0,
       vendor:             vendorInp.value.trim(),
+      manufacturer:       mfgInp.value.trim(),
+      nsn:                nsnInp.value.trim(),
+      cage_code:          cageInp.value.trim(),
+      unit_of_measure:    uomSel.value,
       notes:              notesInp2.value.trim(),
     };
     if (isEdit) {
@@ -2660,7 +2718,10 @@ function exportSupplyRFQ(sr) {
       <th>#</th>
       <th>Item Name</th>
       <th>Part Number</th>
-      <th>Description</th>
+      <th>NSN</th>
+      <th>Manufacturer</th>
+      <th>CAGE</th>
+      <th>UOM</th>
       <th>Qty</th>
       <th>Est. Unit Cost</th>
       <th>Est. Total</th>
@@ -2812,6 +2873,21 @@ function showInventoryForm(existing, onDone) {
   var vendorInp = el('input',{}); vendorInp.className='ops-input'; vendorInp.placeholder='Preferred vendor';
   if (existing) vendorInp.value = existing.vendor || '';
   body.appendChild(fg('Vendor', vendorInp));
+
+  var mfgInp = el('input',{}); mfgInp.className='ops-input'; mfgInp.placeholder='Manufacturer';
+  if (existing) mfgInp.value = existing.manufacturer || '';
+  body.appendChild(fg('Manufacturer', mfgInp));
+
+  var nsnInp = el('input',{}); nsnInp.className='ops-input'; nsnInp.placeholder='NSN (e.g. 5945-01-234-5678)';
+  if (existing) nsnInp.value = existing.nsn || '';
+  body.appendChild(fg('NSN', nsnInp));
+
+  var cageInp = el('input',{}); cageInp.className='ops-input'; cageInp.placeholder='CAGE Code';
+  if (existing) cageInp.value = existing.cage_code || '';
+  body.appendChild(fg('CAGE Code', cageInp));
+
+  var uomSel = sel([['each','Each'],['box','Box'],['lot','Lot'],['gallon','Gallon'],['liter','Liter'],['feet','Feet'],['meter','Meter'],['pair','Pair'],['set','Set'],['roll','Roll']], existing?.unit_of_measure || 'each');
+  body.appendChild(fg('Unit of Measure', uomSel));
 
   var leadInp = el('input',{}); leadInp.className='ops-input'; leadInp.type='number'; leadInp.placeholder='0';
   if (existing) leadInp.value = existing.lead_time_days || '';
