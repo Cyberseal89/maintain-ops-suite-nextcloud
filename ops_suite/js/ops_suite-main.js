@@ -377,6 +377,7 @@ function overdueDays(d){ return d?Math.max(0,Math.floor((Date.now()-new Date(d).
 async function buildAssetForm(data) {
   data = data||{};
   var assets = await getAssets();
+  var platforms = await API.platforms.list();
   var wrap = div('ops-form-grid');
   function add(l,i,full,hint){ wrap.appendChild(fg(l,i,full,hint)); return i; }
   var f = {};
@@ -415,6 +416,7 @@ async function buildAssetForm(data) {
     install_date:f.install.value||'', warranty_expiry:f.warranty.value||'',
     status:f.status.value, linked_assets:linkedPicker.getValue(),
     tags:f.tags.value, notes:f.notes.value,
+    platform_id: f.platform.value ? parseInt(f.platform.value) : null,
     // allow name edit too
     name:f.name.value,
   });
