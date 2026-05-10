@@ -67,6 +67,16 @@ var API = {
                   groups:     ()      => req('GET',  '/api/groups') },
   settings:     { get:        ()      => req('GET',  '/api/settings'),
                   save:       d       => req('POST', '/api/settings', d) },
+  availProjects: {
+                  list:       p         => req('GET',    '/api/avail-projects'+qs(p)),
+                  get:        id        => req('GET',    '/api/avail-projects/'+id),
+                  create:     d         => req('POST',   '/api/avail-projects', d),
+                  update:     (id,d)    => req('PUT',    '/api/avail-projects/'+id, d),
+                  destroy:    id        => req('DELETE', '/api/avail-projects/'+id),
+                  addItem:    (id,d)    => req('POST',   '/api/avail-projects/'+id+'/items', d),
+                  updateItem: (id,iid,d)=> req('PUT',    '/api/avail-projects/'+id+'/items/'+iid, d),
+                  deleteItem: (id,iid)  => req('DELETE', '/api/avail-projects/'+id+'/items/'+iid),
+                },
   modernizations: {
                   list:      p       => req('GET',    '/api/modernizations'+qs(p)),
                   get:       id      => req('GET',    '/api/modernizations/'+id),
@@ -1783,6 +1793,515 @@ function showDocForm(modId, existing, onDone) {
   }, isEdit ? 'Save Changes' : 'Add Document');
 }
 
+/* ── Availability Projects ── */
+const AVAIL_STATUSES = [
+  ['planning','Planning'],['approved','Approved'],['in_progress','In Progress'],['complete','Complete']
+];
+const ITEM_COLORS = { pm:'#0284c7', modernization:'#7c3aed', deficiency:'#dc2626', milestone:'#d97706' };
+
+async function viewAvailProjects() {
+  var wrap = div(''); setContent(wrap);
+  var hdr = div('ops-page-header', [el('h2', {text: '📅 Availability Projects'})]);
+  var newBtn = btn('primary', '+ New Project', () => showAvailProjectForm(null, () => viewAvailProjects()));
+  hdr.appendChild(newBtn);
+  wrap.appendChild(hdr);
+
+  var loading = span('ops-muted', 'Loading…'); wrap.appendChild(loading);
+  var p = {};
+  if (_selectedPlatformIds.length) p.platform_ids = _selectedPlatformIds.join(',');
+  var projects = await API.availProjects.list(p).catch(() => []);
+  loading.remove();
+
+  if (!projects.length) {
+    wrap.appendChild(el('p', {cls:'ops-empty', text:'No availability projects yet.'}));
+    return;
+  }
+
+  var card = div('ops-card');
+  card.appendChild(makeTable(
+    ['Title', 'Status', 'Start', 'End', 'Assigned', ''],
+    projects.map(proj => {
+      var statusB = span('ops-badge '+(proj.status==='complete'?'badge-green':proj.status==='in_progress'?'badge-blue':proj.status==='approved'?'badge-teal':'badge-gray'),
+        AVAIL_STATUSES.find(s=>s[0]===proj.status)?.[1]||proj.status);
+      var viewBtn = btn('ops-btn-sm', '📅 Gantt', () => navigate('avail-detail', proj.id));
+      var editBtn = btn('ops-btn-sm', '✏', () => showAvailProjectForm(proj, () => viewAvailProjects()));
+      var actWrap = div(''); actWrap.style.cssText='display:flex;gap:4px;';
+      actWrap.appendChild(viewBtn); actWrap.appendChild(editBtn);
+      var titleEl = el('strong', {text: proj.title, style:'cursor:pointer;color:#38bdf8;'});
+      titleEl.onclick = () => navigate('avail-detail', proj.id);
+      return [titleEl, statusB,
+        proj.start_date ? proj.start_date.slice(0,10) : span('ops-muted','—'),
+        proj.end_date   ? proj.end_date.slice(0,10)   : span('ops-muted','—'),
+        proj.assigned_to || span('ops-muted','—'),
+        actWrap];
+    })
+  ));
+  wrap.appendChild(card);
+}
+
+async function viewAvailProjectDetail(id) {
+  setContent(el('div', {cls:'ops-empty', text:'Loading…'}));
+  var proj = await API.availProjects.get(id).catch(() => null);
+  if (!proj) return;
+
+  var wrap = div('');
+  var hdr = div('ops-page-header');
+  hdr.appendChild(btn('', '← Projects', () => navigate('avail-projects')));
+  hdr.appendChild(el('h2', {text: proj.title}));
+  hdr.appendChild(span('ops-badge '+(proj.status==='complete'?'badge-green':proj.status==='in_progress'?'badge-blue':'badge-gray'),
+    AVAIL_STATUSES.find(s=>s[0]===proj.status)?.[1]||proj.status));
+  hdr.appendChild(btn('', '✏ Edit', () => showAvailProjectForm(proj, () => viewAvailProjectDetail(id))));
+  hdr.appendChild(btn('primary', '+ Add Item', () => showAddItemForm(proj, () => viewAvailProjectDetail(id))));
+  wrap.appendChild(hdr);
+
+  // Project window info
+  var infoBar = div('');
+  infoBar.style.cssText = 'display:flex;gap:20px;padding:12px 0;border-bottom:1px solid #2e3650;margin-bottom:16px;font-size:13px;color:#94a3b8;';
+  if (proj.start_date) infoBar.appendChild(el('span', {text: '📅 Start: ' + proj.start_date.slice(0,10)}));
+  if (proj.end_date)   infoBar.appendChild(el('span', {text: '🏁 End: '   + proj.end_date.slice(0,10)}));
+  if (proj.assigned_to) infoBar.appendChild(el('span', {text: '👤 ' + proj.assigned_to}));
+  wrap.appendChild(infoBar);
+
+  var items = proj.items || [];
+
+  if (!items.length) {
+    wrap.appendChild(el('p', {cls:'ops-empty', text:'No items yet. Add PMs, modernizations, deficiencies or milestones.'}));
+    setContent(wrap);
+    return;
+  }
+
+  // Gantt chart
+  var ganttCard = div('ops-card');
+  ganttCard.appendChild(div('ops-card-header', [el('h3', {text:'Gantt Chart'})]));
+  ganttCard.appendChild(renderGantt(proj, items));
+  wrap.appendChild(ganttCard);
+
+  // Items table
+  var tableCard = div('ops-card'); tableCard.style.marginTop = '16px';
+  tableCard.appendChild(div('ops-card-header', [el('h3', {text:'Project Items'})]));
+  tableCard.appendChild(makeTable(
+    ['Type', 'Title', 'Planned Start', 'Planned End', 'Status', 'Warnings', ''],
+    items.map(item => {
+      var typeChip = span('ops-badge', item.item_type);
+      typeChip.style.backgroundColor = ITEM_COLORS[item.item_type] + '33';
+      typeChip.style.color = ITEM_COLORS[item.item_type];
+      typeChip.style.border = '1px solid ' + ITEM_COLORS[item.item_type];
+
+      var outOfWindow = [];
+      if (proj.start_date && item.planned_start && item.planned_start < proj.start_date)
+        outOfWindow.push('⚠ Before window');
+      if (proj.end_date && item.planned_end && item.planned_end > proj.end_date)
+        outOfWindow.push('⚠ After window');
+
+      var delBtn = btn('danger ops-btn-sm', '✕', async () => {
+        if (!confirm('Remove this item from the project?')) return;
+        await API.availProjects.deleteItem(id, item.id);
+        viewAvailProjectDetail(id);
+      });
+
+      return [
+        typeChip,
+        el('strong', {text: item.title || '—'}),
+        item.planned_start ? item.planned_start.slice(0,10) : span('ops-muted','—'),
+        item.planned_end   ? item.planned_end.slice(0,10)   : span('ops-muted','—'),
+        span('ops-badge '+(item.status==='complete'?'badge-green':item.status==='in_progress'?'badge-blue':'badge-gray'), item.status),
+        outOfWindow.length ? span('ops-danger ops-small', outOfWindow.join(', ')) : span('ops-muted','—'),
+        delBtn
+      ];
+    })
+  ));
+  wrap.appendChild(tableCard);
+  setContent(wrap);
+}
+
+function renderGantt(proj, items) {
+  var container = div('');
+  container.style.cssText = 'overflow-x:auto;padding:8px 0;';
+
+  if (!items.length) return container;
+
+  // Calculate date range
+  var allDates = [];
+  if (proj.start_date) allDates.push(new Date(proj.start_date));
+  if (proj.end_date)   allDates.push(new Date(proj.end_date));
+  items.forEach(item => {
+    if (item.planned_start) allDates.push(new Date(item.planned_start));
+    if (item.planned_end)   allDates.push(new Date(item.planned_end));
+  });
+  if (!allDates.length) return container;
+
+  var minDate = new Date(Math.min(...allDates));
+  var maxDate = new Date(Math.max(...allDates));
+  // Add padding
+  minDate.setDate(minDate.getDate() - 3);
+  maxDate.setDate(maxDate.getDate() + 3);
+
+  var totalDays = Math.ceil((maxDate - minDate) / 86400000);
+  var rowH = 36;
+  var labelW = 180;
+  var dayW = Math.max(20, Math.min(40, Math.floor((window.innerWidth - labelW - 60) / totalDays)));
+  var chartW = labelW + totalDays * dayW;
+  var chartH = (items.length + 1) * rowH + 40;
+
+  var canvas = document.createElement('canvas');
+  canvas.width  = chartW;
+  canvas.height = chartH;
+  canvas.style.cssText = 'display:block;border-radius:8px;';
+
+  var ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#1e2540';
+  ctx.fillRect(0, 0, chartW, chartH);
+
+  // Header row — months
+  var headerY = 20;
+  ctx.fillStyle = '#64748b';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'center';
+
+  var d = new Date(minDate);
+  var lastMonth = -1;
+  for (var day = 0; day < totalDays; day++) {
+    var x = labelW + day * dayW;
+    if (d.getMonth() !== lastMonth) {
+      lastMonth = d.getMonth();
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(d.toLocaleString('default',{month:'short'})+' '+d.getFullYear(), x + dayW*2, headerY);
+      ctx.fillStyle = '#2e3650';
+      ctx.fillRect(x, 0, 1, chartH);
+    }
+    d.setDate(d.getDate() + 1);
+  }
+
+  // Today line
+  var todayOffset = Math.floor((new Date() - minDate) / 86400000);
+  if (todayOffset >= 0 && todayOffset < totalDays) {
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    ctx.moveTo(labelW + todayOffset * dayW, 25);
+    ctx.lineTo(labelW + todayOffset * dayW, chartH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Project window shading
+  if (proj.start_date && proj.end_date) {
+    var winStart = Math.floor((new Date(proj.start_date) - minDate) / 86400000);
+    var winEnd   = Math.floor((new Date(proj.end_date)   - minDate) / 86400000);
+    ctx.fillStyle = 'rgba(56,189,248,0.05)';
+    ctx.fillRect(labelW + winStart * dayW, 25, (winEnd - winStart) * dayW, chartH - 25);
+  }
+
+  // Item rows
+  items.forEach((item, idx) => {
+    var y = 30 + idx * rowH;
+    var color = ITEM_COLORS[item.item_type] || '#64748b';
+
+    // Row background alternate
+    ctx.fillStyle = idx % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent';
+    ctx.fillRect(0, y, chartW, rowH);
+
+    // Label
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'left';
+    var label = (item.title || item.item_type).slice(0, 22);
+    ctx.fillText(label, 8, y + rowH/2 + 4);
+
+    // Bar or milestone
+    if (item.item_type === 'milestone') {
+      if (item.planned_start) {
+        var mx = labelW + Math.floor((new Date(item.planned_start) - minDate) / 86400000) * dayW;
+        var my = y + rowH/2;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(mx, my - 8);
+        ctx.lineTo(mx + 8, my);
+        ctx.lineTo(mx, my + 8);
+        ctx.lineTo(mx - 8, my);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else if (item.planned_start && item.planned_end) {
+      var barStart = Math.floor((new Date(item.planned_start) - minDate) / 86400000);
+      var barEnd   = Math.floor((new Date(item.planned_end)   - minDate) / 86400000);
+      var barX = labelW + barStart * dayW;
+      var barW2 = Math.max(dayW, (barEnd - barStart) * dayW);
+      var barY = y + 6;
+      var barH2 = rowH - 12;
+
+      // Bar background
+      ctx.fillStyle = color + '33';
+      ctx.beginPath();
+      ctx.roundRect(barX, barY, barW2, barH2, 4);
+      ctx.fill();
+
+      // Bar border
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(barX, barY, barW2, barH2, 4);
+      ctx.stroke();
+
+      // Progress fill if actual dates
+      if (item.actual_start) {
+        var actStart = Math.floor((new Date(item.actual_start) - minDate) / 86400000);
+        var actEnd   = item.actual_end ? Math.floor((new Date(item.actual_end) - minDate) / 86400000) : todayOffset;
+        var actX = labelW + actStart * dayW;
+        var actW = Math.max(4, (actEnd - actStart) * dayW);
+        ctx.fillStyle = color + '88';
+        ctx.beginPath();
+        ctx.roundRect(actX, barY+2, Math.min(actW, barW2-2), barH2-4, 3);
+        ctx.fill();
+      }
+
+      // Out of window indicator
+      if ((proj.start_date && item.planned_start < proj.start_date) ||
+          (proj.end_date && item.planned_end > proj.end_date)) {
+        ctx.fillStyle = '#f59e0b';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.fillText('⚠', barX + barW2 + 4, barY + barH2/2 + 4);
+      }
+    }
+  });
+
+  // Draw dependency arrows
+  items.forEach((item, idx) => {
+    var deps = JSON.parse(item.depends_on || '[]');
+    deps.forEach(depId => {
+      var depIdx = items.findIndex(i => i.id === depId);
+      if (depIdx < 0 || !item.planned_start) return;
+      var depItem = items[depIdx];
+      if (!depItem.planned_end) return;
+
+      var fromX = labelW + Math.floor((new Date(depItem.planned_end) - minDate) / 86400000) * dayW;
+      var fromY = 30 + depIdx * rowH + rowH/2;
+      var toX   = labelW + Math.floor((new Date(item.planned_start) - minDate) / 86400000) * dayW;
+      var toY   = 30 + idx * rowH + rowH/2;
+
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3,3]);
+      ctx.beginPath();
+      ctx.moveTo(fromX, fromY);
+      ctx.lineTo(toX, toY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Arrow head
+      ctx.fillStyle = '#475569';
+      ctx.beginPath();
+      ctx.moveTo(toX, toY);
+      ctx.lineTo(toX - 6, toY - 4);
+      ctx.lineTo(toX - 6, toY + 4);
+      ctx.closePath();
+      ctx.fill();
+    });
+  });
+
+  // Click handler — show item details popup
+  canvas.addEventListener('click', function(e) {
+    var rect = canvas.getBoundingClientRect();
+    var mx = e.clientX - rect.left;
+    var my = e.clientY - rect.top;
+    var clickedIdx = Math.floor((my - 30) / rowH);
+    if (clickedIdx < 0 || clickedIdx >= items.length) return;
+    showItemPopup(items[clickedIdx], e.clientX, e.clientY);
+  });
+
+  container.appendChild(canvas);
+
+  // Legend
+  var legend = div(''); legend.style.cssText = 'display:flex;gap:16px;padding:8px 0;flex-wrap:wrap;';
+  Object.entries(ITEM_COLORS).forEach(([type, color]) => {
+    var item2 = div(''); item2.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;';
+    var dot = div(''); dot.style.cssText = 'width:12px;height:12px;border-radius:3px;background:'+color+';';
+    item2.appendChild(dot);
+    item2.appendChild(document.createTextNode(type.charAt(0).toUpperCase()+type.slice(1)));
+    legend.appendChild(item2);
+  });
+  var todayLeg = div(''); todayLeg.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;';
+  var todayDot = div(''); todayDot.style.cssText = 'width:12px;height:2px;background:#f59e0b;';
+  todayLeg.appendChild(todayDot);
+  todayLeg.appendChild(document.createTextNode('Today'));
+  legend.appendChild(todayLeg);
+  container.appendChild(legend);
+
+  return container;
+}
+
+function showItemPopup(item, x, y) {
+  // Remove existing popup
+  document.querySelector('.gantt-popup')?.remove();
+
+  var popup = div('gantt-popup');
+  popup.style.cssText = 'position:fixed;left:'+Math.min(x+10, window.innerWidth-280)+'px;top:'+Math.min(y+10,window.innerHeight-200)+'px;width:260px;background:#1e2540;border:1px solid #3e4a65;border-radius:12px;padding:16px;box-shadow:0 20px 40px rgba(0,0,0,0.5);z-index:99999;';
+
+  var color = ITEM_COLORS[item.item_type] || '#64748b';
+  var typeChip = div('');
+  typeChip.style.cssText = 'display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:8px;background:'+color+'33;color:'+color+';border:1px solid '+color+';';
+  typeChip.textContent = item.item_type;
+  popup.appendChild(typeChip);
+
+  popup.appendChild(el('div', {style:'font-size:14px;font-weight:700;color:#e2e8f0;margin-bottom:8px;', text: item.title || '—'}));
+
+  var details = [
+    ['Planned Start', item.planned_start ? item.planned_start.slice(0,10) : '—'],
+    ['Planned End',   item.planned_end   ? item.planned_end.slice(0,10)   : '—'],
+    ['Status',        item.status || '—'],
+  ];
+  if (item.notes) details.push(['Notes', item.notes]);
+
+  details.forEach(([k,v]) => {
+    var row = div(''); row.style.cssText = 'display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid #2e3650;';
+    row.appendChild(span('ops-muted', k));
+    row.appendChild(el('span', {style:'color:#e2e8f0;', text:v}));
+    popup.appendChild(row);
+  });
+
+  // Go to detail link if linked item
+  if (item.item_id && item.item_type !== 'milestone') {
+    var routes = {pm:'pm-procedures', modernization:'modernizations', deficiency:'def-detail'};
+    var goBtn = btn('primary ops-btn-sm', '→ View Detail', () => {
+      popup.remove();
+      if (item.item_type === 'deficiency') navigate('def-detail', item.item_id);
+      else navigate(routes[item.item_type]);
+    });
+    goBtn.style.marginTop = '12px';
+    popup.appendChild(goBtn);
+  }
+
+  var closeBtn = btn('ops-btn-sm', '✕', () => popup.remove());
+  closeBtn.style.cssText += 'position:absolute;top:8px;right:8px;padding:2px 8px;';
+  popup.appendChild(closeBtn);
+
+  document.body.appendChild(popup);
+  document.addEventListener('click', function handler(e) {
+    if (!popup.contains(e.target)) { popup.remove(); document.removeEventListener('click', handler); }
+  }, {once: false});
+}
+
+function showAvailProjectForm(existing, onDone) {
+  var isEdit = !!existing;
+  var body = div('ops-form-grid');
+
+  var titleInp = el('input',{}); titleInp.className='ops-input'; titleInp.placeholder='Project title';
+  if (existing) titleInp.value = existing.title || '';
+  body.appendChild(fg('Title *', titleInp, true));
+
+  var descInp = document.createElement('textarea'); descInp.className='ops-input'; descInp.rows=2;
+  descInp.placeholder='Project scope and description';
+  if (existing) descInp.value = existing.description || '';
+  body.appendChild(fg('Description', descInp, true));
+
+  var statusSel = sel(AVAIL_STATUSES, existing?.status || 'planning');
+  body.appendChild(fg('Status', statusSel));
+
+  var startInp = el('input',{}); startInp.className='ops-input'; startInp.type='date';
+  if (existing?.start_date) startInp.value = existing.start_date.slice(0,10);
+  body.appendChild(fg('Start Date *', startInp));
+
+  var endInp = el('input',{}); endInp.className='ops-input'; endInp.type='date';
+  if (existing?.end_date) endInp.value = existing.end_date.slice(0,10);
+  body.appendChild(fg('End Date *', endInp));
+
+  var assignInp = el('input',{}); assignInp.className='ops-input'; assignInp.placeholder='Assigned user';
+  if (existing) assignInp.value = existing.assigned_to || '';
+  body.appendChild(fg('Assigned To', assignInp));
+
+  var approverInp = el('input',{}); approverInp.className='ops-input'; approverInp.placeholder='Approver';
+  if (existing) approverInp.value = existing.approver || '';
+  body.appendChild(fg('Approver', approverInp));
+
+  modal(isEdit ? 'Edit Project' : 'New Availability Project', body, async () => {
+    if (!titleInp.value.trim()) throw new Error('Title is required.');
+    if (!startInp.value) throw new Error('Start date is required.');
+    if (!endInp.value)   throw new Error('End date is required.');
+    var data = {
+      title:       titleInp.value.trim(),
+      description: descInp.value.trim(),
+      status:      statusSel.value,
+      start_date:  startInp.value,
+      end_date:    endInp.value,
+      assigned_to: assignInp.value.trim(),
+      approver:    approverInp.value.trim(),
+    };
+    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
+    if (isEdit) await API.availProjects.update(existing.id, data);
+    else await API.availProjects.create(data);
+    if (onDone) onDone();
+  }, isEdit ? 'Save Changes' : 'Create Project');
+}
+
+async function showAddItemForm(proj, onDone) {
+  var body = div('ops-form-grid');
+
+  var typeSel = sel([
+    ['pm','PM Procedure'],['modernization','Modernization'],
+    ['deficiency','Deficiency'],['milestone','Milestone']
+  ], 'pm');
+  body.appendChild(fg('Item Type', typeSel));
+
+  // Dynamic item search
+  var itemWrap = div('');
+  var itemSel = el('select',{cls:'ops-select'});
+  itemSel.appendChild(el('option',{value:'',text:'— Select item —'}));
+  itemWrap.appendChild(itemSel);
+  body.appendChild(fg('Linked Item', itemWrap));
+
+  var titleInp = el('input',{}); titleInp.className='ops-input'; titleInp.placeholder='Override title (optional)';
+  body.appendChild(fg('Title Override', titleInp));
+
+  var startInp = el('input',{}); startInp.className='ops-input'; startInp.type='date';
+  body.appendChild(fg('Planned Start', startInp));
+
+  var endInp = el('input',{}); endInp.className='ops-input'; endInp.type='date';
+  body.appendChild(fg('Planned End', endInp));
+
+  var notesInp = document.createElement('textarea'); notesInp.className='ops-input'; notesInp.rows=2;
+  body.appendChild(fg('Notes', notesInp, true));
+
+  // Load items when type changes
+  async function loadItems() {
+    itemSel.innerHTML = '<option value="">— Select item —</option>';
+    var type = typeSel.value;
+    if (type === 'milestone') { itemWrap.style.display='none'; return; }
+    itemWrap.style.display='';
+    var items = [];
+    if (type === 'pm')            items = await API.procedures.list({});
+    if (type === 'modernization') items = await API.modernizations.list({});
+    if (type === 'deficiency')    items = await API.deficiencies.list({status:'open_all'});
+    items.forEach(i => {
+      var label = i.name || i.title || i.summary || '#'+i.id;
+      itemSel.appendChild(el('option',{value:String(i.id), text:label}));
+    });
+  }
+  typeSel.onchange = loadItems;
+  await loadItems();
+
+  modal('Add Item to Project', body, async () => {
+    var type = typeSel.value;
+    var itemId = itemSel.value ? parseInt(itemSel.value) : null;
+    if (type !== 'milestone' && !itemId) throw new Error('Please select an item.');
+    var data = {
+      item_type:     type,
+      item_id:       itemId,
+      title:         titleInp.value.trim(),
+      planned_start: startInp.value || '',
+      planned_end:   endInp.value || '',
+      notes:         notesInp.value.trim(),
+    };
+    var result = await API.availProjects.addItem(proj.id, data);
+    if (result.warnings && result.warnings.length) {
+      alert('Item added with warnings:
+' + result.warnings.join('
+'));
+    }
+    if (onDone) onDone();
+  }, 'Add Item');
+}
+
 /* ── Platform Form ── */
 function showPlatformForm(existing, onDone) {
   var isEdit = !!existing;
@@ -1885,6 +2404,7 @@ function buildSidebar() {
     {label:'All Procedures', route:'pm-procedures', icon:'≡'},
     {label:'Deficiencies',   route:'deficiencies',  icon:'⚠', section:'Deficiencies'},
     {label:'Modernizations',  route:'modernizations', icon:'🔧', section:'Modernization'},
+    {label:'Avail Projects',   route:'avail-projects',  icon:'📅', section:'Modernization'},
     {label:'Settings',       route:'settings',      icon:'⚙', section:'Admin'},
     {label:'Platforms',       route:'platforms',     icon:'🌐', section:'Admin'},
   ];
@@ -1917,6 +2437,8 @@ async function dispatch(route, param) {
     else if (route==='pm-procedures') await viewPmProcedures();
     else if (route==='deficiencies')  await viewDeficiencies();
     else if (route==='modernizations') await viewModernizations();
+    else if (route==='avail-projects')  await viewAvailProjects();
+    else if (route==='avail-detail')    await viewAvailProjectDetail(parseInt(param));
     else if (route==='def-detail')    await viewDefDetail(parseInt(param));
     else if (route==='settings')      await viewSettings();
     else if (route==='platforms')     await viewPlatforms();
