@@ -2071,6 +2071,7 @@ function showAssetVerifyModal(asset, onDone) {
       serial_number: serialInp.value.trim(),
       notes:         asset.notes ? asset.notes + ' [Verified] ' + notesInp.value.trim() : notesInp.value.trim(),
     });
+    clearCache('assets');
     if (onDone) onDone();
   }, '✓ Confirm Verification');
 }
