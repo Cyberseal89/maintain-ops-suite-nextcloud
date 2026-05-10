@@ -2526,10 +2526,7 @@ function showInventoryForm(existing, onDone) {
     };
     if (!isEdit) data.quantity_on_hand = parseFloat(qtyInp.value) || 0;
     data.count_class = classSel.value;
-    if (defaults.source_type) data.source_type = defaults.source_type;
-    if (defaults.source_id)   data.source_id   = defaults.source_id;
-    if (defaults.platform_id) data.platform_id = defaults.platform_id;
-    else if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
+    if (_selectedPlatformIds.length === 1) data.platform_id = _selectedPlatformIds[0];
     if (isEdit) await API.supply.inventory.update(existing.id, data);
     else await API.supply.inventory.create(data);
     if (onDone) onDone();
