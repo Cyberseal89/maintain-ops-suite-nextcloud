@@ -78,6 +78,7 @@ class DeficiencyController extends Controller {
         $def->setScheduledOutageHours((float)($data['scheduled_outage_hours'] ?? 0));
         $def->setTargetCompletion($data['target_completion'] ?: null);
         $def->setLinkedProcedureId((int)($data['linked_procedure_id'] ?? 0));
+        $def->setPlatformId(isset($data['platform_id']) && $data['platform_id'] ? (int)$data['platform_id'] : null);
         $def->setCreatedBy($uid);
         $def->setCreatedAt($now);
         $def->setUpdatedAt($now);
