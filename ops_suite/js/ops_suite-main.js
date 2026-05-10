@@ -724,7 +724,14 @@ async function viewAssetDetail(id) {
       await API.procedures.create(d); navigate('asset-detail',id);
     },'Create Procedure');
   });
-  hdr.appendChild(editBtn); hdr.appendChild(logDefBtn); hdr.appendChild(addPmBtn);
+  var modBtn = btn('', '🔧 Create Modernization', () => {
+    showModernizationForm({
+      title: 'Modernization — ' + asset.name,
+      asset_ids: JSON.stringify([asset.id]),
+      platform_id: asset.platform_id,
+    }, () => navigate('modernizations'));
+  });
+  hdr.appendChild(editBtn); hdr.appendChild(logDefBtn); hdr.appendChild(addPmBtn); hdr.appendChild(modBtn);
   wrap.appendChild(hdr);
 
   var two=div('ops-two-col');
