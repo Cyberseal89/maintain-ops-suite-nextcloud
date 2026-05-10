@@ -2548,8 +2548,6 @@ async function viewInventoryDetail(id) {
 }
 
 /* ── Validations Due ── */
-const COUNT_CLASS_INTERVALS = {'A-daily':1,'A-weekly':7,'B':30,'C':90,'full':365};
-const COUNT_CLASS_LABELS = {'A-daily':'A (Daily)','A-weekly':'A (Weekly)','B':'B (Monthly)','C':'C (Quarterly)','full':'Annual'};
 
 async function viewValidationsDue() {
   var wrap = div(''); setContent(wrap);
