@@ -123,8 +123,9 @@ var API = {
                   update:     (id,d)  => req('PUT',  '/api/platforms/'+id, d),
                   destroy:    id      => req('DELETE','/api/platforms/'+id) },
   files:        { sopFolder:  ()      => req('GET',  '/api/files/sop'),
-                  listFolder: p       => req('GET',  '/api/files/list'+qs(p)) }
-};
+                  listFolder: p       => req('GET',  '/api/files/list'+qs(p)),
+                  getTdp:    (assetId, assetName) => req('GET',  '/api/files/tdp?asset_id='+assetId+'&asset_name='+encodeURIComponent(assetName)),
+                  createTdp: (assetId, assetName) => req('POST', '/api/files/tdp', {asset_id: assetId, asset_name: assetName}) } };
 
 /* ── Cache ───────────────────────────────────────────────────── */
 var _cache = { assets:null, users:null, settings:null };
