@@ -919,7 +919,7 @@ async function viewAssetDetail(id) {
             file.mime?.includes('image') ? '🖼' :
             file.mime?.includes('video') ? '🎬' : '📄';
           var fileName = el('span', {text: icon + ' ' + file.name, style:'flex:1;color:#94a3b8;font-size:12px;cursor:pointer;'});
-          fileName.onclick = () => { var url = file.fileid ? '/f/' + file.fileid : '/remote.php/dav/files/' + _currentUser + file.rel; window.open(url, '_blank'); };
+          fileName.onclick = () => showFileViewer(file);
           fileRow.appendChild(fileName);
           fileList.appendChild(fileRow);
         });
@@ -1050,7 +1050,7 @@ function viewProcedureDetail(p, onClose) {
           var fileLink = el('div', {style:'display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer;border-bottom:1px solid #1e2540;'});
           var icon = file.mime?.includes('pdf') ? '📕' : file.mime?.includes('image') ? '🖼' : '📄';
           fileLink.appendChild(el('span', {text: icon + ' ' + file.name, style:'color:#38bdf8;font-size:12px;flex:1;'}));
-          fileLink.onclick = () => { var url = file.fileid ? '/f/' + file.fileid : '/remote.php/dav/files/' + _currentUser + file.rel; window.open(url, '_blank'); };
+          fileLink.onclick = () => showFileViewer(file);
           body.appendChild(fileLink);
         });
       });
@@ -1921,6 +1921,71 @@ function showDocForm(modId, existing, onDone) {
     }
     if (onDone) onDone();
   }, isEdit ? 'Save Changes' : 'Add Document');
+}
+
+/* ── PDF / File Viewer ── */
+function showFileViewer(file) {
+  document.querySelector('.ops-file-viewer-overlay')?.remove();
+
+  var overlay = div('');
+  overlay.className = 'ops-file-viewer-overlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);z-index:999999;display:flex;flex-direction:column;';
+
+  // Header
+  var hdr = div('');
+  hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:#1e2540;border-bottom:1px solid #2e3650;flex-shrink:0;';
+  var title = el('span', {text: file.name, style:'color:#e2e8f0;font-size:14px;font-weight:700;'});
+  var closeBtn = el('button', {text:'✕ Close', style:'background:none;border:1px solid #3e4a65;color:#94a3b8;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;'});
+  closeBtn.onclick = () => overlay.remove();
+  var downloadBtn = el('a', {
+    href: '/remote.php/dav/files/' + _currentUser + file.rel,
+    download: file.name,
+    text: '⬇ Download',
+    style: 'background:none;border:1px solid #3e4a65;color:#94a3b8;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;text-decoration:none;margin-right:8px;'
+  });
+  hdr.appendChild(title);
+  var btnWrap = div(''); btnWrap.style.cssText = 'display:flex;gap:8px;align-items:center;';
+  btnWrap.appendChild(downloadBtn);
+  btnWrap.appendChild(closeBtn);
+  hdr.appendChild(btnWrap);
+  overlay.appendChild(hdr);
+
+  // Content area
+  var content2 = div('');
+  content2.style.cssText = 'flex:1;overflow:hidden;display:flex;align-items:center;justify-content:center;';
+
+  var davUrl = '/remote.php/dav/files/' + _currentUser + file.rel;
+  var mime = file.mime || '';
+
+  if (mime.includes('pdf')) {
+    var iframe = document.createElement('iframe');
+    iframe.src = davUrl;
+    iframe.style.cssText = 'width:100%;height:100%;border:none;';
+    content2.appendChild(iframe);
+  } else if (mime.includes('image')) {
+    var img = document.createElement('img');
+    img.src = davUrl;
+    img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+    content2.appendChild(img);
+  } else {
+    var msg = div('');
+    msg.style.cssText = 'text-align:center;color:#94a3b8;';
+    msg.innerHTML = '<div style="font-size:48px;margin-bottom:16px;">📄</div>' +
+      '<div style="font-size:16px;margin-bottom:8px;">' + file.name + '</div>' +
+      '<div style="font-size:13px;margin-bottom:20px;color:#64748b;">Preview not available for this file type.</div>' +
+      '<a href="' + davUrl + '" download="' + file.name + '" style="background:#0284c7;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-size:13px;">⬇ Download File</a>';
+    content2.appendChild(msg);
+  }
+
+  overlay.appendChild(content2);
+
+  // Close on backdrop click
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.addEventListener('keydown', function handler(e) {
+    if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', handler); }
+  });
+
+  document.body.appendChild(overlay);
 }
 
 /* ── Validations Due ── */
