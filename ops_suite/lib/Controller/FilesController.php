@@ -5,6 +5,7 @@ namespace OCA\OpsSuite\Controller;
 
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\DataResponse;
+use OCP\AppFramework\Http\DataDownloadResponse;
 use OCP\AppFramework\Http\Http;
 use OCP\Files\IRootFolder;
 use OCP\Files\FileInfo;
@@ -197,36 +198,22 @@ class FilesController extends Controller {
      * @NoAdminRequired
      * Serves a file inline (for PDF/image viewing in browser).
      */
-    public function serveFile(): void {
+    public function serveFile(): DataDownloadResponse {
         $uid  = $this->userSession->getUser()?->getUID();
         $path = $this->request->getParam('path', '');
-
-        if (!$uid || !$path) {
-            http_response_code(400);
-            exit;
-        }
-
         $path = ltrim($path, '/');
 
         try {
             $userFolder = $this->rootFolder->getUserFolder($uid);
-            if (!$userFolder->nodeExists($path)) {
-                http_response_code(404);
-                exit;
-            }
-            $file = $userFolder->get($path);
-            $mime = $file->getMimetype();
-            $name = $file->getName();
-
-            header('Content-Type: ' . $mime);
-            header('Content-Disposition: inline; filename="' . addslashes($name) . '"');
-            header('Content-Length: ' . $file->getSize());
-            header('Cache-Control: private, max-age=3600');
-            echo $file->getContent();
+            $file       = $userFolder->get($path);
+            $mime       = $file->getMimetype();
+            $name       = $file->getName();
+            $response   = new DataDownloadResponse($file->getContent(), $name, $mime);
+            $response->addHeader('Content-Disposition', 'inline; filename="' . addslashes($name) . '"');
+            return $response;
         } catch (\Exception $e) {
-            http_response_code(500);
+            return new DataDownloadResponse('', 'error.txt', 'text/plain');
         }
-        exit;
     }
 
     private function listFiles(\OCP\Files\Folder $folder): array {
