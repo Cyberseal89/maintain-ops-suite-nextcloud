@@ -137,6 +137,7 @@ function clearCache(k)       { if (k) _cache[k]=null; else { _cache.assets=null;
 
 /* ── Permission helper ───────────────────────────────────────── */
 var _canWrite = null;
+var _currentUser = (typeof OC !== 'undefined' && OC.currentUser) ? OC.currentUser : '';
 var _orgSettings = { org_name: 'Alto Technologies LLC', org_address: '', org_city: '', org_phone: '', org_email: '', org_website: '' };
 async function canWrite() {
   if (_canWrite !== null) return _canWrite;
@@ -918,7 +919,7 @@ async function viewAssetDetail(id) {
             file.mime?.includes('image') ? '🖼' :
             file.mime?.includes('video') ? '🎬' : '📄';
           var fileName = el('span', {text: icon + ' ' + file.name, style:'flex:1;color:#94a3b8;font-size:12px;cursor:pointer;'});
-          fileName.onclick = () => window.open('/apps/files/?dir=' + encodeURIComponent(file.rel.replace('/'+file.name,'')) + '&openfile=' + encodeURIComponent(file.name), '_blank');
+          fileName.onclick = () => window.open('/remote.php/dav/files/' + _currentUser + file.rel, '_blank');
           fileRow.appendChild(fileName);
           fileList.appendChild(fileRow);
         });
@@ -1049,7 +1050,7 @@ function viewProcedureDetail(p, onClose) {
           var fileLink = el('div', {style:'display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer;border-bottom:1px solid #1e2540;'});
           var icon = file.mime?.includes('pdf') ? '📕' : file.mime?.includes('image') ? '🖼' : '📄';
           fileLink.appendChild(el('span', {text: icon + ' ' + file.name, style:'color:#38bdf8;font-size:12px;flex:1;'}));
-          fileLink.onclick = () => window.open('/apps/files/?dir=' + encodeURIComponent(file.rel.replace('/'+file.name,'')) + '&openfile=' + encodeURIComponent(file.name), '_blank');
+          fileLink.onclick = () => window.open('/remote.php/dav/files/' + _currentUser + file.rel, '_blank');
           body.appendChild(fileLink);
         });
       });
