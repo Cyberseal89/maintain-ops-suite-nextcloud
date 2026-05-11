@@ -48,6 +48,7 @@ class Asset extends Entity implements \JsonSerializable {
     protected int     $iuidCompliant   = 0;
     protected string  $cageCode        = '';
     protected string  $updatedAt      = '';
+    protected ?int    $tdpSourceAssetId = null;
     protected ?int     $platformId     = null;
 
     public function jsonSerialize(): array {
