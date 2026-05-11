@@ -97,6 +97,7 @@ return [
         ['name' => 'platform#destroy',    'url' => '/api/platforms/{id}',         'verb' => 'DELETE'],
         // ── Files (SOP picker + folder listing) ───────────────────
         ['name' => 'files#sopFolder',  'url' => '/api/files/sop',         'verb' => 'GET'],
+        ['name' => 'files#serveFile',     'url' => '/api/files/serve',   'verb' => 'GET'],
         ['name' => 'files#getTdpContents', 'url' => '/api/files/tdp',    'verb' => 'GET'],
         ['name' => 'files#createTdpFolder', 'url' => '/api/files/tdp',    'verb' => 'POST'],
         ['name' => 'files#listFolder', 'url' => '/api/files/list',        'verb' => 'GET'],

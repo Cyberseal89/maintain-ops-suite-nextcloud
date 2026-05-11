@@ -1938,7 +1938,7 @@ function showFileViewer(file) {
   var closeBtn = el('button', {text:'✕ Close', style:'background:none;border:1px solid #3e4a65;color:#94a3b8;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;'});
   closeBtn.onclick = () => overlay.remove();
   var downloadBtn = el('a', {
-    href: '/remote.php/dav/files/' + _currentUser + file.rel,
+    href: serveUrl,
     download: file.name,
     text: '⬇ Download',
     style: 'background:none;border:1px solid #3e4a65;color:#94a3b8;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;text-decoration:none;margin-right:8px;'
@@ -1964,7 +1964,7 @@ function showFileViewer(file) {
     content2.appendChild(iframe);
   } else if (mime.includes('image')) {
     var img = document.createElement('img');
-    img.src = davUrl;
+    img.src = serveUrl;
     img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
     content2.appendChild(img);
   } else {

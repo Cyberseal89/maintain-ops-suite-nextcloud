@@ -193,6 +193,42 @@ class FilesController extends Controller {
         }
     }
 
+    /**
+     * @NoAdminRequired
+     * Serves a file inline (for PDF/image viewing in browser).
+     */
+    public function serveFile(): void {
+        $uid  = $this->userSession->getUser()?->getUID();
+        $path = $this->request->getParam('path', '');
+
+        if (!$uid || !$path) {
+            http_response_code(400);
+            exit;
+        }
+
+        $path = ltrim($path, '/');
+
+        try {
+            $userFolder = $this->rootFolder->getUserFolder($uid);
+            if (!$userFolder->nodeExists($path)) {
+                http_response_code(404);
+                exit;
+            }
+            $file = $userFolder->get($path);
+            $mime = $file->getMimetype();
+            $name = $file->getName();
+
+            header('Content-Type: ' . $mime);
+            header('Content-Disposition: inline; filename="' . addslashes($name) . '"');
+            header('Content-Length: ' . $file->getSize());
+            header('Cache-Control: private, max-age=3600');
+            echo $file->getContent();
+        } catch (\Exception $e) {
+            http_response_code(500);
+        }
+        exit;
+    }
+
     private function listFiles(\OCP\Files\Folder $folder): array {
         $items = [];
         foreach ($folder->getDirectoryListing() as $node) {
