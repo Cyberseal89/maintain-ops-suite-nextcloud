@@ -103,6 +103,51 @@ class FilesController extends Controller {
 
     /**
      * @NoAdminRequired
+     * Gets TDP folder contents for an asset.
+     */
+    public function getTdpContents(): DataResponse {
+        $uid       = $this->userSession->getUser()?->getUID();
+        $assetId   = $this->request->getParam('asset_id');
+        $assetName = $this->request->getParam('asset_name', 'Asset');
+
+        if (!$uid) {
+            return new DataResponse(['error' => 'Not authenticated'], Http::STATUS_UNAUTHORIZED);
+        }
+
+        $folderName = 'TDP/' . $assetId . ' — ' . preg_replace('/[^\w\s\-]/', '', $assetName);
+        $subFolders = ['Drawings', 'Tech Manuals', 'Test Plans', 'Training', 'PM SOPs', 'Other'];
+
+        try {
+            $userFolder = $this->rootFolder->getUserFolder($uid);
+            $result = [];
+
+            foreach ($subFolders as $sub) {
+                $subPath = $folderName . '/' . $sub;
+                $files = [];
+                if ($userFolder->nodeExists($subPath)) {
+                    $folder = $userFolder->get($subPath);
+                    $files = $this->listFiles($folder);
+                }
+                $result[] = [
+                    'name'  => $sub,
+                    'path'  => '/' . $subPath,
+                    'url'   => '/apps/files/?dir=' . urlencode('/' . $subPath),
+                    'files' => $files,
+                ];
+            }
+
+            return new DataResponse([
+                'folder' => '/' . $folderName,
+                'url'    => '/apps/files/?dir=' . urlencode('/' . $folderName),
+                'sections' => $result,
+            ]);
+        } catch (\Exception $e) {
+            return new DataResponse(['sections' => [], 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * @NoAdminRequired
      * Creates TDP folder structure for an asset.
      */
     public function createTdpFolder(): DataResponse {

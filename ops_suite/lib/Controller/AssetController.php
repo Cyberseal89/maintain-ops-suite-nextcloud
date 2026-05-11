@@ -113,6 +113,7 @@ class AssetController extends Controller {
         if (array_key_exists('status', $data))          $asset->setStatus($data['status']);
         if (array_key_exists('notes', $data))           $asset->setNotes($data['notes']);
         if (array_key_exists('platform_id', $data))      $asset->setPlatformId($data['platform_id'] ? (int)$data['platform_id'] : null);
+        if (array_key_exists('tdp_source_asset_id', $data)) $asset->setTdpSourceAssetId($data['tdp_source_asset_id'] ? (int)$data['tdp_source_asset_id'] : null);
         if (array_key_exists('tags', $data))            $asset->setTags($data['tags']);
         if (array_key_exists('linked_assets', $data))   $asset->setLinkedAssets($data['linked_assets']);
         // Verify action

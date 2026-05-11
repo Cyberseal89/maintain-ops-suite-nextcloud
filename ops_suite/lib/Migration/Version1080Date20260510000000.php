@@ -25,6 +25,14 @@ class Version1080Date20260510000000 extends SimpleMigrationStep {
             }
         }
 
+        // ── Asset TDP source link ─────────────────────────────────────
+        if ($schema->hasTable('ops_assets')) {
+            $t = $schema->getTable('ops_assets');
+            if (!$t->hasColumn('tdp_source_asset_id')) {
+                $t->addColumn('tdp_source_asset_id', Types::INTEGER, ['notnull' => false, 'default' => null]);
+            }
+        }
+
         // ── Asset IUID/UII fields (ISO 15459/16022) ──────────────────
         if ($schema->hasTable('ops_assets')) {
             $t = $schema->getTable('ops_assets');

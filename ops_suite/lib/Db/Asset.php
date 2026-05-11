@@ -72,6 +72,7 @@ class Asset extends Entity implements \JsonSerializable {
             'created_by'      => $this->createdBy,
             'created_at'      => $this->createdAt,
             'updated_at'      => $this->updatedAt,
+            'tdp_source_asset_id' => $this->tdpSourceAssetId,
             'platform_id'     => $this->platformId,
             'last_verified_at'=> $this->lastVerifiedAt,
             'verified_by'     => $this->verifiedBy,

@@ -457,6 +457,8 @@ async function buildAssetForm(data) {
   linkedWrap.appendChild(linkedPicker);
   wrap.appendChild(linkedWrap);
 
+  var tdpSourceOpts = [['','— Own TDP folder —']].concat(assets.filter(a=>a.id!==(data.id||0)).map(a=>[String(a.id), a.asset_id_label+' — '+a.name]));
+  f.tdpSource = add('TDP Source Asset', sel(tdpSourceOpts, data.tdp_source_asset_id ? String(data.tdp_source_asset_id) : ''), false, 'Link to another asset's TDP folder. Use for identical equipment sharing the same documentation.');
   f.uii      = add('UII (ISO 15459)', inp('Unique Item Identifier', data.uii||''));
   f.cageCode = add('CAGE Code', inp('5-character CAGE code', data.cage_code||''));
   f.iuid     = add('IUID Compliant', sel([['0','No'],['1','Yes']], String(data.iuid_compliant ? '1' : '0')));
@@ -471,6 +473,7 @@ async function buildAssetForm(data) {
     status:f.status.value, linked_assets:linkedPicker.getValue(),
     tags:f.tags.value, notes:f.notes.value,
     platform_id: f.platform.value ? parseInt(f.platform.value) : null,
+    tdp_source_asset_id: f.tdpSource ? (f.tdpSource.value ? parseInt(f.tdpSource.value) : null) : null,
     uii: f.uii.value,
     cage_code: f.cageCode.value,
     iuid_compliant: parseInt(f.iuid.value),
@@ -780,13 +783,12 @@ async function viewAssetDetail(id) {
     await API.assets.update(id, {verify: 1});
     viewAssetDetail(id);
   });
-  var tdpBtn = btn('', '📁 TDP Folder', async () => {
-    var result = await API.files.createTdp(id, asset.name).catch(e => null);
-    if (result && result.url) {
-      window.open(result.url, '_blank');
-    } else {
-      alert('Could not create TDP folder.');
-    }
+  var tdpBtn = btn('', '📁 Open TDP Folder', async () => {
+    var srcId   = asset.tdp_source_asset_id || id;
+    var srcName = asset.tdp_source_asset_id ? (assets.find(a=>a.id===asset.tdp_source_asset_id)?.name || asset.name) : asset.name;
+    var result  = await API.files.createTdp(srcId, srcName).catch(e => null);
+    if (result && result.url) window.open(result.url, '_blank');
+    else alert('Could not create TDP folder.');
   });
   hdr.appendChild(editBtn); hdr.appendChild(logDefBtn); hdr.appendChild(addPmBtn); hdr.appendChild(modBtn); hdr.appendChild(verifyBtn); hdr.appendChild(tdpBtn);
   wrap.appendChild(hdr);
@@ -856,6 +858,75 @@ async function viewAssetDetail(id) {
     defs.map(d=>[span('ops-muted',d.def_id_label),el('strong',{text:d.summary}),sevBadge(d.severity),statusBadge(d.status)]),
     i=>{ if(defs[i]) navigate('def-detail',defs[i].id); }));
   right.appendChild(defC);
+
+  // TDP Section
+  var tdpCard = div('ops-card'); tdpCard.style.marginTop = '16px';
+  var tdpHdr = div('ops-card-header');
+  tdpHdr.appendChild(el('h3', {text: '📁 Technical Data Package'}));
+  if (asset.tdp_source_asset_id) {
+    var srcAsset = await API.assets.get(asset.tdp_source_asset_id).catch(() => null);
+    var sharedBadge = span('ops-badge badge-blue', '⬡ Shared from ' + (srcAsset ? srcAsset.asset_id_label + ' — ' + srcAsset.name : 'Asset #' + asset.tdp_source_asset_id));
+    tdpHdr.appendChild(sharedBadge);
+  }
+  var openTdpBtn = btn('ops-btn-sm', '📂 Open in Files', async () => {
+    var srcId   = asset.tdp_source_asset_id || id;
+    var srcName = asset.tdp_source_asset_id ? (srcAsset?.name || asset.name) : asset.name;
+    var result  = await API.files.createTdp(srcId, srcName).catch(() => null);
+    if (result?.url) window.open(result.url, '_blank');
+  });
+  tdpHdr.appendChild(openTdpBtn);
+  tdpCard.appendChild(tdpHdr);
+
+  // Load TDP contents
+  var tdpSrcId   = asset.tdp_source_asset_id || id;
+  var tdpSrcName = asset.tdp_source_asset_id ? (srcAsset?.name || asset.name) : asset.name;
+  var tdpData    = await API.files.getTdp(tdpSrcId, tdpSrcName).catch(() => null);
+  var sections   = tdpData?.sections || [];
+
+  var TDP_ICONS = {
+    'Drawings':'📐', 'Tech Manuals':'📖', 'Test Plans':'🧪',
+    'Training':'🎓', 'PM SOPs':'🔧', 'Other':'📄'
+  };
+
+  if (!sections.length || sections.every(s => s.files.length === 0)) {
+    var emptyMsg = div('');
+    emptyMsg.style.cssText = 'padding:16px;color:#64748b;font-size:13px;text-align:center;';
+    emptyMsg.textContent = 'No documents yet. Click "Open in Files" to add documents to the TDP folder.';
+    tdpCard.appendChild(emptyMsg);
+  } else {
+    sections.forEach(section => {
+      var secDiv = div('');
+      secDiv.style.cssText = 'margin-bottom:12px;';
+
+      var secHdr = div('');
+      secHdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#0f172a;border-radius:8px;cursor:pointer;margin-bottom:4px;';
+      var secTitle = el('span', {text: (TDP_ICONS[section.name]||'📄') + ' ' + section.name + ' (' + section.files.length + ')', style:'color:#e2e8f0;font-weight:600;font-size:13px;'});
+      var openSecBtn = el('a', {href: section.url, target:'_blank', style:'color:#38bdf8;font-size:11px;text-decoration:none;', text:'Open folder →'});
+      secHdr.appendChild(secTitle);
+      secHdr.appendChild(openSecBtn);
+      secDiv.appendChild(secHdr);
+
+      if (section.files.length > 0) {
+        var fileList = div('');
+        fileList.style.cssText = 'padding:4px 8px;';
+        section.files.forEach(file => {
+          var fileRow = div('');
+          fileRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid #1e2540;';
+          var icon = file.type === 'folder' ? '📁' :
+            file.mime?.includes('pdf') ? '📕' :
+            file.mime?.includes('image') ? '🖼' :
+            file.mime?.includes('video') ? '🎬' : '📄';
+          var fileName = el('span', {text: icon + ' ' + file.name, style:'flex:1;color:#94a3b8;font-size:12px;cursor:pointer;'});
+          fileName.onclick = () => window.open('/apps/files/?dir=' + encodeURIComponent(file.rel.replace('/'+file.name,'')) + '&openfile=' + encodeURIComponent(file.name), '_blank');
+          fileRow.appendChild(fileName);
+          fileList.appendChild(fileRow);
+        });
+        secDiv.appendChild(fileList);
+      }
+      tdpCard.appendChild(secDiv);
+    });
+  }
+  right.appendChild(tdpCard);
   two.appendChild(right);
   wrap.appendChild(two);
   setContent(wrap);
@@ -950,6 +1021,43 @@ function viewProcedureDetail(p, onClose) {
   body.appendChild(row('Assigned To', p.assigned_to || '—'));
   body.appendChild(row('Category',    p.category || '—'));
   if (p.document_ref) body.appendChild(row('SOP Document', sopLink(p.document_ref)));
+
+  // TDP Documents from asset folder
+  if (p.asset_id) {
+    var tdpHdrEl = el('div', {style:'font-size:12px;font-weight:700;color:#38bdf8;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;', text:'📁 Technical Data Package'});
+    body.appendChild(tdpHdrEl);
+    var tdpLoading = el('div', {style:'color:#64748b;font-size:12px;', text:'Loading TDP documents…'});
+    body.appendChild(tdpLoading);
+
+    // Load asset to get TDP source
+    API.assets.get(p.asset_id).then(async asset => {
+      var srcId   = asset.tdp_source_asset_id || asset.id;
+      var srcName = asset.tdp_source_asset_id ? asset.name : asset.name;
+      var tdpData = await API.files.getTdp(srcId, srcName).catch(() => null);
+      tdpLoading.remove();
+      var sections = tdpData?.sections || [];
+      var TDP_ICONS2 = {'Drawings':'📐','Tech Manuals':'📖','Test Plans':'🧪','Training':'🎓','PM SOPs':'🔧','Other':'📄'};
+
+      // Show PM SOPs first, then others
+      var sorted = [...sections].sort((a,b) => a.name === 'PM SOPs' ? -1 : b.name === 'PM SOPs' ? 1 : 0);
+      sorted.forEach(section => {
+        if (!section.files.length) return;
+        var secLabel = el('div', {style:'font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;margin:8px 0 4px;', text: (TDP_ICONS2[section.name]||'📄') + ' ' + section.name});
+        body.appendChild(secLabel);
+        section.files.forEach(file => {
+          var fileLink = el('div', {style:'display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer;border-bottom:1px solid #1e2540;'});
+          var icon = file.mime?.includes('pdf') ? '📕' : file.mime?.includes('image') ? '🖼' : '📄';
+          fileLink.appendChild(el('span', {text: icon + ' ' + file.name, style:'color:#38bdf8;font-size:12px;flex:1;'}));
+          fileLink.onclick = () => window.open('/apps/files/?dir=' + encodeURIComponent(file.rel.replace('/'+file.name,'')) + '&openfile=' + encodeURIComponent(file.name), '_blank');
+          body.appendChild(fileLink);
+        });
+      });
+
+      if (sections.every(s => !s.files.length)) {
+        body.appendChild(el('div', {style:'color:#64748b;font-size:12px;', text:'No TDP documents found. Add documents through the Asset detail view.'}));
+      }
+    }).catch(() => { tdpLoading.textContent = 'Could not load TDP documents.'; });
+  }
 
   // Description
   if (p.description) {
