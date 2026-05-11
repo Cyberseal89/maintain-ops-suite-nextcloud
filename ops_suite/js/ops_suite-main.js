@@ -919,7 +919,7 @@ async function viewAssetDetail(id) {
             file.mime?.includes('image') ? '🖼' :
             file.mime?.includes('video') ? '🎬' : '📄';
           var fileName = el('span', {text: icon + ' ' + file.name, style:'flex:1;color:#94a3b8;font-size:12px;cursor:pointer;'});
-          fileName.onclick = () => window.open('/remote.php/dav/files/' + _currentUser + file.rel, '_blank');
+          fileName.onclick = () => { var url = file.fileid ? '/f/' + file.fileid : '/remote.php/dav/files/' + _currentUser + file.rel; window.open(url, '_blank'); };
           fileRow.appendChild(fileName);
           fileList.appendChild(fileRow);
         });
@@ -1050,7 +1050,7 @@ function viewProcedureDetail(p, onClose) {
           var fileLink = el('div', {style:'display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer;border-bottom:1px solid #1e2540;'});
           var icon = file.mime?.includes('pdf') ? '📕' : file.mime?.includes('image') ? '🖼' : '📄';
           fileLink.appendChild(el('span', {text: icon + ' ' + file.name, style:'color:#38bdf8;font-size:12px;flex:1;'}));
-          fileLink.onclick = () => window.open('/remote.php/dav/files/' + _currentUser + file.rel, '_blank');
+          fileLink.onclick = () => { var url = file.fileid ? '/f/' + file.fileid : '/remote.php/dav/files/' + _currentUser + file.rel; window.open(url, '_blank'); };
           body.appendChild(fileLink);
         });
       });

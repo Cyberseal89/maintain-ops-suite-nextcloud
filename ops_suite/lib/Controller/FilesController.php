@@ -205,6 +205,7 @@ class FilesController extends Controller {
                 'mime'  => $node->getType() === FileInfo::TYPE_FOLDER ? 'folder' : $node->getMimetype(),
                 'mtime' => $node->getMTime(),
                 'size'  => $node->getSize(),
+                'fileid'=> $node->getId(),
             ];
         }
         // Folders first, then files, both alphabetical
