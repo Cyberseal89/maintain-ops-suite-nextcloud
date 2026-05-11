@@ -196,6 +196,7 @@ class FilesController extends Controller {
 
     /**
      * @NoAdminRequired
+     * @NoCSRFRequired
      * Serves a file inline (for PDF/image viewing in browser).
      */
     public function serveFile(): DataDownloadResponse {
