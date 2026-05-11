@@ -1926,7 +1926,7 @@ function showDocForm(modId, existing, onDone) {
 /* ── PDF / File Viewer ── */
 function showFileViewer(file) {
   var davUrl = '/remote.php/dav/files/' + _currentUser + file.rel;
-  var serveUrl = '/apps/ops_suite/api/files/serve?path=' + encodeURIComponent(file.rel);
+  // serveUrl removed - using davUrl directly
   var mime = file.mime || '';
   document.querySelector('.ops-file-viewer-overlay')?.remove();
 
@@ -1961,7 +1961,7 @@ function showFileViewer(file) {
 
   if (mime.includes('pdf')) {
     var iframe = document.createElement('iframe');
-    iframe.src = serveUrl;
+    iframe.src = davUrl;
     iframe.style.cssText = 'width:100%;height:100%;border:none;';
     content2.appendChild(iframe);
   } else if (mime.includes('image')) {
