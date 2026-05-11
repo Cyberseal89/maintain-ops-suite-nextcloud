@@ -458,7 +458,7 @@ async function buildAssetForm(data) {
   wrap.appendChild(linkedWrap);
 
   var tdpSourceOpts = [['','— Own TDP folder —']].concat(assets.filter(a=>a.id!==(data.id||0)).map(a=>[String(a.id), a.asset_id_label+' — '+a.name]));
-  f.tdpSource = add('TDP Source Asset', sel(tdpSourceOpts, data.tdp_source_asset_id ? String(data.tdp_source_asset_id) : ''), false, 'Link to another asset's TDP folder. Use for identical equipment sharing the same documentation.');
+  f.tdpSource = add('TDP Source Asset', sel(tdpSourceOpts, data.tdp_source_asset_id ? String(data.tdp_source_asset_id) : ''), false, 'Link to another assets TDP folder. Use for identical equipment sharing the same documentation.');
   f.uii      = add('UII (ISO 15459)', inp('Unique Item Identifier', data.uii||''));
   f.cageCode = add('CAGE Code', inp('5-character CAGE code', data.cage_code||''));
   f.iuid     = add('IUID Compliant', sel([['0','No'],['1','Yes']], String(data.iuid_compliant ? '1' : '0')));
