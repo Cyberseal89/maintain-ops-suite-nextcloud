@@ -1925,6 +1925,9 @@ function showDocForm(modId, existing, onDone) {
 
 /* ── PDF / File Viewer ── */
 function showFileViewer(file) {
+  var davUrl = '/remote.php/dav/files/' + _currentUser + file.rel;
+  var serveUrl = '/apps/ops_suite/api/files/serve?path=' + encodeURIComponent(file.rel);
+  var mime = file.mime || '';
   document.querySelector('.ops-file-viewer-overlay')?.remove();
 
   var overlay = div('');
@@ -1955,11 +1958,10 @@ function showFileViewer(file) {
   content2.style.cssText = 'flex:1;overflow:hidden;display:flex;align-items:center;justify-content:center;';
 
   var davUrl = '/remote.php/dav/files/' + _currentUser + file.rel;
-  var mime = file.mime || '';
 
   if (mime.includes('pdf')) {
     var iframe = document.createElement('iframe');
-    iframe.src = davUrl;
+    iframe.src = serveUrl;
     iframe.style.cssText = 'width:100%;height:100%;border:none;';
     content2.appendChild(iframe);
   } else if (mime.includes('image')) {
