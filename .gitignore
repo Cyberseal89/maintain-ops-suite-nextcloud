@@ -28,3 +28,6 @@ ops_suite/config/config.php
 
 # Logs
 *.log
+
+# App signing — private key must never be committed
+certs/*.key
