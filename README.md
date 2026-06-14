@@ -280,7 +280,7 @@ Individual users and hobbyists
 Nonprofits and educational institutions (community support only)
 Developers contributing to or evaluating the platform
 Organizations self-hosting who comply fully with AGPL-3.0 terms
-AGPL-3.0 requires that if you modify the software and provide access to it over a network, you must make your modified source code available under the same license.
+AGPL-3.0 requires that if you modify the software and provide access to it over a network, you must make your modified source code available under the same license.The liscense file is located in this directory as Liscense.md
 Government, Defense & Enterprise Use — Commercial License
 If your use case involves any of the following, a Commercial License is required:
 U.S. or foreign government agencies, military branches, or defense contractors
