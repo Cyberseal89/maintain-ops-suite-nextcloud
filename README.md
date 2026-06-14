@@ -270,7 +270,30 @@ https://github.com/Cyberseal89/maintain-ops-suite-nextcloud/issues
 
 ## License
 
-AGPL-3.0-or-later — see [LICENSE](LICENSE) for details.
+Licensing
+Maintain Ops Suite is dual-licensed. Choose the license that fits your use case:
+Community Use — AGPL-3.0 (Free)
+
+If you are self-hosting Maintain Ops Suite for your own organization's internal use and are willing to release any modifications under AGPL-3.0, you may use the software for free under the GNU Affero General Public License v3.0.
+This includes:
+Individual users and hobbyists
+Nonprofits and educational institutions (community support only)
+Developers contributing to or evaluating the platform
+Organizations self-hosting who comply fully with AGPL-3.0 terms
+AGPL-3.0 requires that if you modify the software and provide access to it over a network, you must make your modified source code available under the same license.
+Government, Defense & Enterprise Use — Commercial License
+If your use case involves any of the following, a Commercial License is required:
+U.S. or foreign government agencies, military branches, or defense contractors
+Enterprise deployment where AGPL-3.0 source disclosure is not acceptable
+Integration into proprietary products or platforms
+Deployment of AltoOS in any government or enterprise environment
+Any use requiring indemnification, warranty, or SLA coverage
+Commercial licenses include data rights provisions compatible with DFARS 252.227-7013/7014, full air-gap deployment support, and compliance documentation for government procurement.
+📄 See LICENSE-COMMERCIAL.md for full terms.
+📬 To obtain a commercial license: alto-technologies.com | contact@altotechnologiesllc.com
+Alto Technologies LLC is a SAM.gov-registered small business — CAGE Code 1Z3D5 — eligible for direct government award.
+Contributing
+All contributions are welcome under our Contributor License Agreement. By submitting a pull request, you grant Alto Technologies LLC the right to include your contribution under both AGPL-3.0 and commercial license terms. A CLA bot will prompt you to sign on your first contribution.
 
 ---
 
