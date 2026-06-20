@@ -17,6 +17,7 @@ class Document extends Entity implements \JsonSerializable {
     protected string  $notes         = '';
     protected ?string $localUuid       = null;
     protected ?int    $modernizationId = null;
+    protected ?int    $canvasId        = null;
     protected string  $createdBy       = '';
     protected string  $createdAt     = '';
     protected string  $updatedAt     = '';
@@ -43,6 +44,8 @@ class Document extends Entity implements \JsonSerializable {
     public function setLocalUuid(?string $v): void    { $this->localUuid = $v; $this->markFieldUpdated('localUuid'); }
     public function getModernizationId(): ?int        { return $this->modernizationId; }
     public function setModernizationId(?int $v): void { $this->modernizationId = $v; $this->markFieldUpdated('modernizationId'); }
+    public function getCanvasId(): ?int               { return $this->canvasId; }
+    public function setCanvasId(?int $v): void        { $this->canvasId = $v; $this->markFieldUpdated('canvasId'); }
     public function getCreatedBy(): string            { return $this->createdBy; }
     public function setCreatedBy(string $v): void   { $this->createdBy = $v; $this->markFieldUpdated('createdBy'); }
     public function getCreatedAt(): string          { return $this->createdAt; }
@@ -64,6 +67,7 @@ class Document extends Entity implements \JsonSerializable {
             'notes'         => $this->notes,
             'local_uuid'       => $this->localUuid,
             'modernization_id' => $this->modernizationId,
+            'canvas_id'        => $this->canvasId,
             'created_by'       => $this->createdBy,
             'created_at'    => $this->createdAt,
             'updated_at'    => $this->updatedAt,

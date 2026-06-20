@@ -44,7 +44,8 @@ class DocumentMapper extends QBMapper {
         ?string $category        = null,
         ?string $status          = null,
         array   $platformIds     = [],
-        ?int    $modernizationId = null
+        ?int    $modernizationId = null,
+        ?int    $canvasId        = null
     ): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')->from($this->getTableName());
@@ -63,7 +64,19 @@ class DocumentMapper extends QBMapper {
         if ($modernizationId !== null) {
             $qb->andWhere($qb->expr()->eq('modernization_id', $qb->createNamedParameter($modernizationId, IQueryBuilder::PARAM_INT)));
         }
+        if ($canvasId !== null) {
+            $qb->andWhere($qb->expr()->eq('canvas_id', $qb->createNamedParameter($canvasId, IQueryBuilder::PARAM_INT)));
+        }
         $qb->orderBy('doc_number', 'ASC');
+        return $this->findEntities($qb);
+    }
+
+    /** @return Document[] */
+    public function findForCanvas(int $canvasId): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')->from($this->getTableName())
+           ->where($qb->expr()->eq('canvas_id', $qb->createNamedParameter($canvasId, IQueryBuilder::PARAM_INT)))
+           ->orderBy('doc_number', 'ASC');
         return $this->findEntities($qb);
     }
 

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace OCA\OpsSuite\Controller;
 
+use OCA\OpsSuite\Db\CanvasMapper;
 use OCA\OpsSuite\Db\ChangeAsset;
 use OCA\OpsSuite\Db\ChangeAssetMapper;
 use OCA\OpsSuite\Db\ConfigChange;
@@ -39,6 +40,7 @@ class ChangeController extends Controller {
         private readonly ChangeAssetMapper  $assetMapper,
         private readonly ShopMapper         $shopMapper,
         private readonly MmbpBudgetMapper   $budgetMapper,
+        private readonly CanvasMapper       $canvasMapper,
         private readonly PermissionService  $permission,
         private readonly IUserSession       $userSession,
     ) {
@@ -153,6 +155,12 @@ class ChangeController extends Controller {
                 if ($newStage === 'approved') {
                     $entry->setApprovedBy($uid);
                     $entry->setApprovedAt($now);
+                    // Flag canvases linked to affected assets as revision-required
+                    $affected = $this->assetMapper->findByChange($id);
+                    $assetIds = array_filter(array_map(fn($a) => $a->getAssetId(), $affected));
+                    if (!empty($assetIds)) {
+                        $this->canvasMapper->flagRevisionRequiredForAssets(array_values($assetIds));
+                    }
                 }
                 if ($newStage === 'complete') {
                     $entry->setCompletedAt($now);

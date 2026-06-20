@@ -1,5 +1,5 @@
 /**
- * OpsSuite v3.16.0
+ * OpsSuite v3.17.0
  * Sprint 0A/0B: shops, asset coding (TYPE-SHOP-POSITION), criticality,
  * readiness engine, local_uuid offline sync foundation.
  */
@@ -238,7 +238,8 @@ var API = {
                   create:  d     => req('POST',   '/api/canvases', d),
                   update:  (id,d)=> req('PUT',    '/api/canvases/'+id, d),
                   destroy: id    => req('DELETE', '/api/canvases/'+id),
-                  status:  id    => req('GET',    '/api/canvases/'+id+'/status') },
+                  status:  id    => req('GET',    '/api/canvases/'+id+'/status'),
+                  publish: (id,d)=> req('POST',   '/api/canvases/'+id+'/publish', d) },
   componentLib: { list:    p     => req('GET',    '/api/component-library'+qs(p)),
                   get:     id    => req('GET',    '/api/component-library/'+id),
                   create:  d     => req('POST',   '/api/component-library', d),
@@ -1876,8 +1877,9 @@ function sopLink(path) {
 
 /* ── Document Registry ─────────────────────────────────────────── */
 
-var DOC_CATEGORIES = ['drawing','tech_manual','spec','sop','test_plan','training','other'];
-var DOC_CAT_ICONS  = {drawing:'📐',tech_manual:'📖',spec:'📋',sop:'🔧',test_plan:'🧪',training:'🎓',other:'📄'};
+var DOC_CATEGORIES = ['mil_std_drawing','drawing','tech_manual','spec','sop','test_plan','training','other'];
+var DOC_CAT_ICONS  = {mil_std_drawing:'📐',drawing:'📐',tech_manual:'📖',spec:'📋',sop:'🔧',test_plan:'🧪',training:'🎓',other:'📄'};
+var DOC_CAT_LABELS = {mil_std_drawing:'MIL-STD Drawing',drawing:'Drawing',tech_manual:'Tech Manual',spec:'Specification',sop:'SOP',test_plan:'Test Plan',training:'Training',other:'Other'};
 var DOC_STATUSES   = ['draft','active','superseded','obsolete'];
 
 function docStatusBadge(s) {
@@ -1932,7 +1934,7 @@ async function viewDocuments() {
       filtered.map(d => [
         span('ops-mono ops-small', d.doc_number),
         (()=>{ var lnk=el('strong',{text:d.title,style:'cursor:pointer;color:#38bdf8;'}); lnk.onclick=()=>navigate('doc-detail',d.id); return lnk; })(),
-        span('ops-badge badge-blue', (DOC_CAT_ICONS[d.category]||'📄') + ' ' + d.category),
+        span('ops-badge badge-blue', (DOC_CAT_ICONS[d.category]||'📄') + ' ' + (DOC_CAT_LABELS[d.category]||d.category)),
         d.asset_id && assetMap[d.asset_id] ? span('ops-mono ops-small', assetMap[d.asset_id].asset_id_label || ('#'+d.asset_id)) : span('ops-muted','—'),
         d.current_rev ? span('ops-mono ops-small','Rev '+d.current_rev) : span('ops-muted','—'),
         docStatusBadge(d.status),
@@ -1981,7 +1983,7 @@ async function viewDocDetail(id) {
   var fields = [
     ['Doc Number', span('ops-mono', doc.doc_number)],
     ['Title',      doc.title],
-    ['Category',   span('ops-badge badge-blue', (DOC_CAT_ICONS[doc.category]||'📄')+' '+doc.category)],
+    ['Category',   span('ops-badge badge-blue', (DOC_CAT_ICONS[doc.category]||'📄')+' '+(DOC_CAT_LABELS[doc.category]||doc.category))],
     ['Status',     docStatusBadge(doc.status)],
     ['Current Rev',doc.current_rev ? span('ops-mono','Rev '+doc.current_rev) : span('ops-muted','—')],
     ['Applicability', doc.applicability || span('ops-muted','—')],
@@ -1994,6 +1996,11 @@ async function viewDocDetail(id) {
       al.onclick = ()=>navigate('asset-detail', linkedAsset.id);
       fields.splice(2, 0, ['Linked Asset', al]);
     }
+  }
+  if (doc.canvas_id) {
+    var cl = el('span',{style:'cursor:pointer;color:#38bdf8;',text:'Open Source Canvas →'});
+    cl.onclick = ()=>navigate('canvas-detail', doc.canvas_id);
+    fields.splice(2, 0, ['Source Canvas', cl]);
   }
   fields.forEach(row=>{
     var kv=div('ops-kv'); kv.appendChild(span('ops-kv-key',row[0]));
@@ -2059,7 +2066,7 @@ async function showDocumentForm(existing, defaultAssetId, onSave) {
     f.docNumber = add('Doc Number', inp('Auto-generated if blank', ''));
   }
   f.title       = add('Title *',       inp('e.g., Network Rack Wiring Diagram', existing?.title||''), true);
-  f.category    = add('Category',      sel(DOC_CATEGORIES.map(c=>[c,(DOC_CAT_ICONS[c]||'')+' '+c]), existing?.category||'other'));
+  f.category    = add('Category',      sel(DOC_CATEGORIES.map(c=>[c,(DOC_CAT_ICONS[c]||'')+' '+(DOC_CAT_LABELS[c]||c)]), existing?.category||'other'));
   f.status      = add('Status',        sel(DOC_STATUSES.map(s=>[s,s]), existing?.status||'draft'));
   f.applicability = add('Applicability', inp('e.g., All HW-C1-* assets', existing?.applicability||''), true);
 
@@ -7569,10 +7576,13 @@ async function viewCanvases() {
             await API.canvases.destroy(c.id); renderCanvasTab();
           });
           var g = div('ops-btn-group'); g.appendChild(viewB); g.appendChild(editB); g.appendChild(delB);
+          var nameCell = div('');
+          nameCell.appendChild(el('strong',{text:c.name,style:'cursor:pointer;color:#38bdf8;',onclick:()=>navigate('canvas-detail',c.id)}));
+          if (c.revision_required) { nameCell.appendChild(document.createTextNode(' ')); nameCell.appendChild(span('ops-badge badge-orange','⚠ Rev Required')); }
           return [
-            el('strong',{text:c.name,style:'cursor:pointer;color:#38bdf8;',onclick:()=>navigate('canvas-detail',c.id)}),
+            nameCell,
             span('ops-badge badge-blue',typeLabel),
-            span('ops-mono ops-small','Rev '+c.version),
+            c.published_rev ? span('ops-mono ops-small','Rev '+c.published_rev) : span('ops-muted','Unpublished'),
             c.is_live ? span('ops-badge badge-green','Live') : span('ops-badge badge-gray','Static'),
             c.system_asset_id ? span('ops-tag','Asset #'+c.system_asset_id) : span('ops-muted','—'),
             c.updated_at ? c.updated_at.slice(0,10) : '—',
@@ -7624,6 +7634,9 @@ async function viewCanvasDetail(id) {
   hdr.appendChild(span('ops-badge badge-blue', CANVAS_TYPES.find(function(t){return t[0]===canvas.canvas_type;})?.[1]||canvas.canvas_type));
   hdr.appendChild(span('ops-mono ops-small','Rev '+canvas.version));
   if (canvas.is_live) hdr.appendChild(span('ops-badge badge-green','● Live Sync'));
+  if (canvas.revision_required) hdr.appendChild(span('ops-badge badge-orange','⚠ Revision Required'));
+  if (canvas.published_at) hdr.appendChild(span('ops-mono ops-small','Published '+canvas.published_rev+' · '+canvas.published_at.slice(0,10)));
+  hdr.appendChild(btn('primary','📐 Publish Drawing',function(){showPublishDrawingForm(canvas,function(){viewCanvasDetail(id);});}));
   hdr.appendChild(btn('','✏ Edit',function(){showCanvasForm(canvas,function(){viewCanvasDetail(id);});}));
   wrap.appendChild(hdr);
 
@@ -8008,6 +8021,49 @@ function showCanvasForm(existing, onSave) {
     else          await API.canvases.create(d);
     if (onSave) onSave();
   }, existing?'Save Changes':'Create Canvas');
+}
+
+function showPublishDrawingForm(canvas, onDone) {
+  var TYPE_LABELS = {
+    network:'Network Topology Diagram', hvac:'HVAC/Mechanical Schematic',
+    power:'Power One-Line Diagram', rf:'RF/Signal Flow Diagram',
+    physical:'Physical Layout Drawing', custom:'System Block Diagram'
+  };
+  var typeLabel = TYPE_LABELS[canvas.canvas_type] || 'System Drawing';
+  var nextRev   = canvas.published_rev
+    ? String.fromCharCode(canvas.published_rev.charCodeAt(0)+1)
+    : 'A';
+
+  var fWrap = div('ops-form-grid');
+  var f = {};
+  function add(l,i,full,hint){ fWrap.appendChild(fg(l,i,full,hint)); return i; }
+
+  // Info banner
+  var info = div('');
+  info.style.cssText='background:rgba(56,189,248,0.07);border:1px solid #1e3a5f;border-radius:6px;padding:12px 14px;margin-bottom:12px;font-size:12px;color:#94a3b8;line-height:1.7;';
+  info.innerHTML='<strong style="color:#e2e8f0;">Drawing Type:</strong> '+typeLabel+'<br>'
+    +(canvas.drawing_doc_id
+      ? '<strong style="color:#e2e8f0;">Existing Doc:</strong> Will add a new revision to the linked drawing in the Document Registry.<br>'
+      : '<strong style="color:#e2e8f0;">First Publish:</strong> A new MIL-STD drawing document will be created in the Document Registry.<br>')
+    +(canvas.revision_required ? '<span style="color:#fb923c;">⚠ This canvas was flagged revision-required by a Config Change approval.</span>' : '');
+  fWrap.insertBefore(info, fWrap.firstChild);
+
+  f.revision   = add('Revision Label *', inp('e.g. A, B, Rev 1', nextRev));
+  f.changeDesc = add('Change Description *', inp('What changed in this revision?', ''));
+  f.baseline   = add('Baseline (optional)', inp('e.g. Functional Baseline, Product Baseline', ''));
+  f.approvedBy = add('Approved By (optional)', inp('NC username of approver', ''));
+
+  modal('📐 Publish MIL-STD Drawing', fWrap, async function() {
+    if (!f.revision.value.trim()) { alert('Revision label is required.'); return; }
+    if (!f.changeDesc.value.trim()) { alert('Change description is required.'); return; }
+    await API.canvases.publish(canvas.id, {
+      revision:    f.revision.value.trim(),
+      change_desc: f.changeDesc.value.trim(),
+      baseline:    f.baseline.value.trim() || null,
+      approved_by: f.approvedBy.value.trim() || null,
+    });
+    if (onDone) onDone();
+  }, 'Publish Drawing');
 }
 
 function showComponentLibForm(existing, onSave) {

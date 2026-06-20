@@ -43,4 +43,17 @@ class CanvasMapper extends QBMapper {
            ->where($qb->expr()->eq('system_asset_id', $qb->createNamedParameter($assetId, IQueryBuilder::PARAM_INT)));
         return $this->findEntities($qb);
     }
+
+    /**
+     * Flag all canvases whose system_asset_id is in $assetIds as revision_required.
+     * Called when a Config Change reaches 'approved' stage.
+     */
+    public function flagRevisionRequiredForAssets(array $assetIds): void {
+        if (empty($assetIds)) return;
+        $qb = $this->db->getQueryBuilder();
+        $qb->update($this->getTableName())
+           ->set('revision_required', $qb->createNamedParameter(true, IQueryBuilder::PARAM_BOOL))
+           ->where($qb->expr()->in('system_asset_id', $qb->createNamedParameter($assetIds, IQueryBuilder::PARAM_INT_ARRAY)));
+        $qb->executeStatement();
+    }
 }

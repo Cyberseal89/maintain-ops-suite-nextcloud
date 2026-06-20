@@ -182,7 +182,8 @@ return [
         ['name' => 'canvas#create',  'url' => '/api/canvases',      'verb' => 'POST'],
         ['name' => 'canvas#update',  'url' => '/api/canvases/{id}', 'verb' => 'PUT'],
         ['name' => 'canvas#destroy', 'url' => '/api/canvases/{id}',         'verb' => 'DELETE'],
-        ['name' => 'canvas#status',  'url' => '/api/canvases/{id}/status', 'verb' => 'GET'],
+        ['name' => 'canvas#status',  'url' => '/api/canvases/{id}/status',  'verb' => 'GET'],
+        ['name' => 'canvas#publish', 'url' => '/api/canvases/{id}/publish', 'verb' => 'POST'],
 
         // ── Component Library ─────────────────────────────────────
         ['name' => 'component_library#index',   'url' => '/api/component-library',      'verb' => 'GET'],

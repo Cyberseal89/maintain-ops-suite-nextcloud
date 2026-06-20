@@ -5,6 +5,10 @@ namespace OCA\OpsSuite\Controller;
 
 use OCA\OpsSuite\Db\Canvas;
 use OCA\OpsSuite\Db\CanvasMapper;
+use OCA\OpsSuite\Db\Document;
+use OCA\OpsSuite\Db\DocumentMapper;
+use OCA\OpsSuite\Db\DocumentRevision;
+use OCA\OpsSuite\Db\DocumentRevisionMapper;
 use OCA\OpsSuite\Service\PermissionService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -17,12 +21,14 @@ use OCP\IUserSession;
 class CanvasController extends Controller {
 
     public function __construct(
-        string                      $appName,
-        IRequest                    $request,
-        private readonly CanvasMapper        $mapper,
-        private readonly PermissionService   $permission,
-        private readonly IUserSession        $userSession,
-        private readonly IDBConnection       $db,
+        string                           $appName,
+        IRequest                         $request,
+        private readonly CanvasMapper            $mapper,
+        private readonly DocumentMapper          $docMapper,
+        private readonly DocumentRevisionMapper  $revMapper,
+        private readonly PermissionService       $permission,
+        private readonly IUserSession            $userSession,
+        private readonly IDBConnection           $db,
     ) {
         parent::__construct($appName, $request);
     }
@@ -172,5 +178,102 @@ class CanvasController extends Controller {
         }
 
         return new DataResponse($result);
+    }
+
+    /**
+     * @NoAdminRequired
+     * POST /api/canvases/{id}/publish
+     * Creates or updates a MIL-STD drawing document in the Doc Registry
+     * and stamps a revision on it. Clears revision_required on the canvas.
+     */
+    public function publish(int $id): DataResponse {
+        if (!$this->permission->canWrite()) {
+            return new DataResponse(['message' => 'Insufficient permissions'], Http::STATUS_FORBIDDEN);
+        }
+        try {
+            $canvas = $this->mapper->find($id);
+        } catch (DoesNotExistException) {
+            return new DataResponse(['message' => 'Not found'], Http::STATUS_NOT_FOUND);
+        }
+
+        $data     = $this->request->getParams();
+        $now      = date('Y-m-d H:i:s');
+        $uid      = $this->userSession->getUser()?->getUID() ?? '';
+        $revLabel = trim($data['revision'] ?? 'A') ?: 'A';
+        $changeDesc = $data['change_desc'] ?? 'Initial publish';
+        $baseline   = $data['baseline'] ?? null;
+
+        $typeLabels = [
+            'network'  => 'Network Topology',
+            'hvac'     => 'HVAC/Mechanical Schematic',
+            'power'    => 'Power One-Line Diagram',
+            'rf'       => 'RF/Signal Flow Diagram',
+            'physical' => 'Physical Layout Drawing',
+            'custom'   => 'System Block Diagram',
+        ];
+        $typeLabel = $typeLabels[$canvas->getCanvasType()] ?? 'System Drawing';
+
+        // Create or fetch the linked drawing document
+        if ($canvas->getDrawingDocId()) {
+            try {
+                $doc = $this->docMapper->find($canvas->getDrawingDocId());
+            } catch (DoesNotExistException) {
+                $doc = null;
+            }
+        } else {
+            $doc = null;
+        }
+
+        if ($doc === null) {
+            $doc = new Document();
+            $doc->setDocNumber('DWG-' . strtoupper(substr(uniqid(), -6)));
+            $doc->setTitle($canvas->getName() . ' — ' . $typeLabel);
+            $doc->setCategory('mil_std_drawing');
+            $doc->setStatus('active');
+            $doc->setPlatformId($canvas->getPlatformId());
+            $doc->setCanvasId($canvas->getId());
+            $doc->setApplicability('');
+            $doc->setNotes('Auto-generated from System Canvas. Canvas ID: ' . $canvas->getId());
+            $doc->setLocalUuid(null);
+            $doc->setModernizationId(null);
+            $doc->setCreatedBy($uid);
+            $doc->setCreatedAt($now);
+            $doc->setUpdatedAt($now);
+            $doc = $this->docMapper->insert($doc);
+        } else {
+            $doc->setUpdatedAt($now);
+            $this->docMapper->update($doc);
+        }
+
+        // Stamp the revision — canvas_data snapshot stored in notes
+        $rev = new DocumentRevision();
+        $rev->setDocumentId($doc->getId());
+        $rev->setRevision($revLabel);
+        $rev->setChangeDesc($changeDesc . ($baseline ? ' [Baseline: ' . $baseline . ']' : ''));
+        $rev->setFilePath(null);
+        $rev->setAuthor($uid);
+        $rev->setApprovedBy($data['approved_by'] ?? null);
+        $rev->setApprovedAt(!empty($data['approved_by']) ? $now : null);
+        $rev->setCreatedAt($now);
+        $this->revMapper->insert($rev);
+
+        // Update document's current_rev
+        $doc->setCurrentRev($revLabel);
+        $doc->setUpdatedAt($now);
+        $this->docMapper->update($doc);
+
+        // Update canvas: link doc, clear revision_required, stamp publish
+        $canvas->setDrawingDocId($doc->getId());
+        $canvas->setRevisionRequired(false);
+        $canvas->setPublishedAt($now);
+        $canvas->setPublishedRev($revLabel);
+        $canvas->setUpdatedAt($now);
+        $this->mapper->update($canvas);
+
+        return new DataResponse([
+            'canvas'   => $canvas->jsonSerialize(),
+            'document' => $doc->jsonSerialize(),
+            'revision' => $rev->jsonSerialize(),
+        ], Http::STATUS_CREATED);
     }
 }
