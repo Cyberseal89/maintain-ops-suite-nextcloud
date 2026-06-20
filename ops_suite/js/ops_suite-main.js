@@ -1,5 +1,5 @@
 /**
- * OpsSuite v3.17.0
+ * OpsSuite v3.17.1
  * Sprint 0A/0B: shops, asset coding (TYPE-SHOP-POSITION), criticality,
  * readiness engine, local_uuid offline sync foundation.
  */
