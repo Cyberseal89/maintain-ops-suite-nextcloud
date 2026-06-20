@@ -7636,6 +7636,11 @@ async function viewCanvasDetail(id) {
   if (canvas.is_live) hdr.appendChild(span('ops-badge badge-green','● Live Sync'));
   if (canvas.revision_required) hdr.appendChild(span('ops-badge badge-orange','⚠ Revision Required'));
   if (canvas.published_at) hdr.appendChild(span('ops-mono ops-small','Published '+canvas.published_rev+' · '+canvas.published_at.slice(0,10)));
+  if (canvas.drawing_doc_id) hdr.appendChild(btn('','📄 View Drawing',async function(){
+    var doc=await API.documents.get(canvas.drawing_doc_id).catch(()=>null);
+    var revs=doc?await API.documents.getRevisions(canvas.drawing_doc_id).catch(()=>[]):[];
+    if (doc) openMilStdDrawing(canvas, doc, revs, nodes||[]);
+  }));
   hdr.appendChild(btn('primary','📐 Publish Drawing',function(){showPublishDrawingForm(canvas,function(){viewCanvasDetail(id);});}));
   hdr.appendChild(btn('','✏ Edit',function(){showCanvasForm(canvas,function(){viewCanvasDetail(id);});}));
   wrap.appendChild(hdr);
@@ -7645,6 +7650,7 @@ async function viewCanvasDetail(id) {
   var cd = JSON.parse(canvas.canvas_data || '{"nodes":[],"edges":[]}');
   var nodes = cd.nodes || [];
   var edges = cd.edges || [];
+  canvas._nodeCache = nodes; // live reference so publish modal can read current nodes
 
   // Editor state
   var selId      = null;
@@ -7751,9 +7757,12 @@ async function viewCanvasDetail(id) {
       }
     });
 
+    // Criticality dot colors
+    var CRIT_COLORS = {CR:'#f87171',DE:'#fb923c',RD:'#fbbf24',SP:'#38bdf8',AD:'#64748b'};
+
     // Nodes
     nodes.forEach(function(node) {
-      var nw=node.w||140, nh=node.h||44;
+      var nw=node.w||150, nh=node.h||60;
       var isSel=node.id===selId;
       var st=node.asset_id ? (statuses[node.asset_id]||statuses[String(node.asset_id)]) : null;
 
@@ -7778,24 +7787,59 @@ async function viewCanvasDetail(id) {
       rect.setAttribute('stroke',borderColor); rect.setAttribute('stroke-width',borderWidth);
       ng.appendChild(rect);
 
-      var label=document.createElementNS(NS,'text');
-      label.setAttribute('x',node.x+nw/2); label.setAttribute('y',node.y+nh/2);
-      label.setAttribute('text-anchor','middle'); label.setAttribute('dominant-baseline','middle');
-      label.setAttribute('font-size','12'); label.setAttribute('fill','#e2e8f0');
-      label.setAttribute('pointer-events','none');
-      label.textContent=node.label.length>18?node.label.slice(0,17)+'…':node.label;
-      ng.appendChild(label);
+      // Divider line between code and name
+      var divL=document.createElementNS(NS,'line');
+      divL.setAttribute('x1',node.x+1); divL.setAttribute('y1',node.y+22);
+      divL.setAttribute('x2',node.x+nw-1); divL.setAttribute('y2',node.y+22);
+      divL.setAttribute('stroke','#1e2540'); divL.setAttribute('stroke-width','1');
+      ng.appendChild(divL);
+
+      // Line 1: asset code (or type label if no asset)
+      var codeLine=node.asset_code||node.label||'';
+      var codeT=document.createElementNS(NS,'text');
+      codeT.setAttribute('x',node.x+nw/2); codeT.setAttribute('y',node.y+13);
+      codeT.setAttribute('text-anchor','middle'); codeT.setAttribute('dominant-baseline','middle');
+      codeT.setAttribute('font-size','9'); codeT.setAttribute('font-family','monospace');
+      codeT.setAttribute('fill','#38bdf8'); codeT.setAttribute('pointer-events','none');
+      codeT.textContent=codeLine.length>20?codeLine.slice(0,19)+'…':codeLine;
+      ng.appendChild(codeT);
+
+      // Line 2: asset name (larger)
+      var nameLine=node.asset_name||node.label||'';
+      var nameT=document.createElementNS(NS,'text');
+      nameT.setAttribute('x',node.x+nw/2); nameT.setAttribute('y',node.y+40);
+      nameT.setAttribute('text-anchor','middle'); nameT.setAttribute('dominant-baseline','middle');
+      nameT.setAttribute('font-size','11'); nameT.setAttribute('fill','#e2e8f0');
+      nameT.setAttribute('pointer-events','none');
+      nameT.textContent=nameLine.length>18?nameLine.slice(0,17)+'…':nameLine;
+      ng.appendChild(nameT);
+
+      // Criticality dot top-left
+      if (node.criticality && CRIT_COLORS[node.criticality]) {
+        var critC=document.createElementNS(NS,'circle');
+        critC.setAttribute('cx',node.x+8); critC.setAttribute('cy',node.y+8);
+        critC.setAttribute('r','5'); critC.setAttribute('fill',CRIT_COLORS[node.criticality]);
+        critC.setAttribute('pointer-events','none');
+        ng.appendChild(critC);
+        var critT=document.createElementNS(NS,'text');
+        critT.setAttribute('x',node.x+8); critT.setAttribute('y',node.y+8);
+        critT.setAttribute('text-anchor','middle'); critT.setAttribute('dominant-baseline','middle');
+        critT.setAttribute('font-size','6'); critT.setAttribute('fill','#000'); critT.setAttribute('font-weight','800');
+        critT.setAttribute('pointer-events','none');
+        critT.textContent=node.criticality;
+        ng.appendChild(critT);
+      }
 
       // Status badge top-right
       if (st && (st.sev_count>0||st.loto||st.overdue)) {
         var bc=st.loto?'#f97316':st.sev_count>0?'#f87171':'#fbbf24';
         var bt=st.loto?'🔒':String(st.sev_count||'!');
         var br=document.createElementNS(NS,'circle');
-        br.setAttribute('cx',node.x+nw-7); br.setAttribute('cy',node.y+7);
+        br.setAttribute('cx',node.x+nw-8); br.setAttribute('cy',node.y+8);
         br.setAttribute('r','7'); br.setAttribute('fill',bc); br.setAttribute('stroke','#0d1117'); br.setAttribute('stroke-width','1');
         ng.appendChild(br);
         var brt=document.createElementNS(NS,'text');
-        brt.setAttribute('x',node.x+nw-7); brt.setAttribute('y',node.y+7);
+        brt.setAttribute('x',node.x+nw-8); brt.setAttribute('y',node.y+8);
         brt.setAttribute('text-anchor','middle'); brt.setAttribute('dominant-baseline','middle');
         brt.setAttribute('font-size','7'); brt.setAttribute('fill','#000'); brt.setAttribute('font-weight','700');
         brt.setAttribute('pointer-events','none');
@@ -7803,7 +7847,7 @@ async function viewCanvasDetail(id) {
         ng.appendChild(brt);
       } else if (st) {
         var okC=document.createElementNS(NS,'circle');
-        okC.setAttribute('cx',node.x+nw-7); okC.setAttribute('cy',node.y+7);
+        okC.setAttribute('cx',node.x+nw-8); okC.setAttribute('cy',node.y+8);
         okC.setAttribute('r','5'); okC.setAttribute('fill','#4ade80'); okC.setAttribute('stroke','#0d1117'); okC.setAttribute('stroke-width','1');
         ng.appendChild(okC);
       }
@@ -7887,19 +7931,101 @@ async function viewCanvasDetail(id) {
     sidePanel.style.display='none'; render();
   }
 
-  function doAddNode() {
-    var f=div('ops-form-grid');
-    function add(l,i,full,hint){f.appendChild(fg(l,i,full,hint));return i;}
-    var lbl=add('Label *', inp('e.g., CORE-SW-01',''));
-    var typ=add('Type', sel([['hardware','Hardware'],['network','Network'],['software','Software'],['firmware','Firmware'],['custom','Custom']],'hardware'));
-    var astInp=inp('e.g. 42','','number');
-    f.appendChild(fg('Linked Asset ID',astInp,false,'Links this node to an asset for live status overlays.'));
-    modal('Add Canvas Node',f,function(){
-      if(!lbl.value.trim()) throw new Error('Label required.');
+  async function doAddNode() {
+    var allAssets=await API.assets.list({}).catch(()=>[]);
+    var selected=null;
+
+    var wrap=div('');
+    // Search box
+    var searchInp=inp('Search by name or code…','');
+    searchInp.style.cssText='width:100%;margin-bottom:10px;';
+    wrap.appendChild(searchInp);
+
+    // Asset list
+    var listBox=div('');
+    listBox.style.cssText='max-height:220px;overflow-y:auto;border:1px solid #2e3650;border-radius:6px;margin-bottom:12px;';
+
+    function renderList(filter) {
+      listBox.innerHTML='';
+      var shown=allAssets.filter(function(a){
+        if (!filter) return true;
+        var f=filter.toLowerCase();
+        return (a.name||'').toLowerCase().includes(f)||(a.asset_id_label||'').toLowerCase().includes(f);
+      }).slice(0,60);
+      if (!shown.length) { listBox.appendChild(el('div',{text:'No assets found.',style:'padding:12px;color:#475569;font-size:12px;'})); return; }
+      shown.forEach(function(a){
+        var row=div('');
+        row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid #1a2035;';
+        row.onmouseover=function(){row.style.background='rgba(56,189,248,0.07)';};
+        row.onmouseout=function(){row.style.background=selected&&selected.id===a.id?'rgba(56,189,248,0.12)':'';};
+        if (selected&&selected.id===a.id) row.style.background='rgba(56,189,248,0.12)';
+        var critColorMap={CR:'#f87171',DE:'#fb923c',RD:'#fbbf24',SP:'#38bdf8',AD:'#64748b'};
+        var crit=el('span',{text:a.criticality||'—',style:'font-size:10px;font-weight:800;color:'+(critColorMap[a.criticality]||'#64748b')+';width:18px;'});
+        var code=el('span',{text:a.asset_id_label||'',style:'font-family:monospace;font-size:11px;color:#38bdf8;min-width:100px;'});
+        var name=el('span',{text:a.name,style:'font-size:12px;color:#e2e8f0;flex:1;'});
+        var type=el('span',{text:a.asset_type||'',style:'font-size:10px;color:#475569;'});
+        row.appendChild(crit); row.appendChild(code); row.appendChild(name); row.appendChild(type);
+        row.addEventListener('click',function(){
+          selected=a;
+          listBox.querySelectorAll('div').forEach(function(r){r.style.background='';});
+          row.style.background='rgba(56,189,248,0.12)';
+          previewBox.innerHTML='';
+          previewBox.appendChild(el('div',{text:a.asset_id_label+' — '+a.name,style:'font-weight:700;color:#e2e8f0;margin-bottom:4px;'}));
+          previewBox.appendChild(el('div',{text:'Type: '+(a.asset_type||'—')+'  |  Criticality: '+(a.criticality||'—')+'  |  Status: '+(a.status||'—'),style:'font-size:11px;color:#64748b;'}));
+        });
+        listBox.appendChild(row);
+      });
+    }
+    renderList('');
+    searchInp.addEventListener('input',function(){renderList(searchInp.value);});
+
+    // Manual node option at bottom
+    var orDiv=el('div',{text:'— or add a manual (non-asset) node —',style:'font-size:10px;color:#475569;text-align:center;margin:8px 0 6px;'});
+    var manualRow=div('ops-form-grid');
+    var manLbl=inp('Label for manual node','');
+    var manTyp=sel([['hardware','Hardware'],['network','Network'],['software','Software'],['firmware','Firmware'],['custom','Custom']],'hardware');
+    manualRow.appendChild(fg('Label',manLbl));
+    manualRow.appendChild(fg('Type',manTyp));
+
+    // Preview
+    var previewBox=div('');
+    previewBox.style.cssText='background:#0f172a;border-radius:6px;padding:8px 12px;min-height:36px;margin-bottom:8px;font-size:12px;color:#64748b;';
+    previewBox.textContent='Select an asset above, or fill in a manual node label below.';
+
+    wrap.appendChild(listBox);
+    wrap.appendChild(previewBox);
+    wrap.appendChild(orDiv);
+    wrap.appendChild(manualRow);
+
+    modal('Add Canvas Node', wrap, function(){
       var nx=Math.round((120-pan.x)/GRID)*GRID, ny=Math.round((80-pan.y)/GRID)*GRID;
-      nodes.push({id:'n'+Date.now(),label:lbl.value.trim(),type:typ.value,asset_id:astInp.value?parseInt(astInp.value):null,x:nx,y:ny,w:140,h:44});
+      if (selected) {
+        nodes.push({
+          id:'n'+Date.now(),
+          label:      selected.asset_id_label||selected.name,
+          asset_code: selected.asset_id_label||'',
+          asset_name: selected.name||'',
+          asset_id:   selected.id,
+          criticality:selected.criticality||null,
+          type:       selected.asset_type||'hardware',
+          x:nx, y:ny, w:150, h:60
+        });
+      } else if (manLbl.value.trim()) {
+        nodes.push({
+          id:'n'+Date.now(),
+          label:      manLbl.value.trim(),
+          asset_code: '',
+          asset_name: manLbl.value.trim(),
+          asset_id:   null,
+          criticality:null,
+          type:       manTyp.value,
+          x:nx, y:ny, w:150, h:60
+        });
+      } else {
+        throw new Error('Select an asset or enter a manual label.');
+      }
       dirty=true; render();
-    },'Add Node');
+    }, 'Add Node');
   }
 
   async function doSave() {
@@ -7919,7 +8045,16 @@ async function viewCanvasDetail(id) {
       var asset=allAssets.find(function(a){return a.id===assetId;});
       if (!asset) return;
       if (!nodes.find(function(n){return n.asset_id===assetId;})) {
-        nodes.push({id:'n'+assetId,label:asset.asset_id_label||asset.name,type:asset.asset_type||'hardware',asset_id:assetId,x:x,y:y,w:140,h:44});
+        nodes.push({
+          id:'n'+assetId,
+          label:      asset.asset_id_label||asset.name,
+          asset_code: asset.asset_id_label||'',
+          asset_name: asset.name||'',
+          asset_id:   assetId,
+          criticality:asset.criticality||null,
+          type:       asset.asset_type||'hardware',
+          x:x, y:y, w:150, h:60
+        });
       }
       var children=allAssets.filter(function(a){return a.parent_id===assetId;});
       var startX=x-Math.floor(children.length/2)*180;
@@ -7940,23 +8075,35 @@ async function viewCanvasDetail(id) {
     statusBtn.textContent='📡 Live Status'; statusBtn.disabled=false;
   }
 
+  var CRIT_COLORS_PANEL = {CR:'#f87171',DE:'#fb923c',RD:'#fbbf24',SP:'#38bdf8',AD:'#64748b'};
   function showSidePanel(node) {
     sidePanelBody.innerHTML='';
     sidePanel.style.display='';
-    var panelHdr=div(''); panelHdr.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:12px;';
-    panelHdr.appendChild(el('h3',{text:node.label,style:'margin:0;color:#e2e8f0;flex:1;'}));
+
+    var panelHdr=div(''); panelHdr.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:8px;';
+    if (node.asset_id) panelHdr.appendChild(btn('ops-btn-sm','👁 View Asset',function(){navigate('asset-detail',node.asset_id);}));
     var renamBtn=btn('ops-btn-sm','✏ Rename',function(){
-      var nn=prompt('New label:',node.label);
-      if(nn&&nn.trim()){node.label=nn.trim();dirty=true;render();showSidePanel(node);}
+      var nn=prompt('New display name:',node.asset_name||node.label);
+      if(nn&&nn.trim()){node.asset_name=nn.trim();node.label=nn.trim();dirty=true;render();showSidePanel(node);}
     });
     panelHdr.appendChild(renamBtn);
-    if (node.asset_id) panelHdr.appendChild(btn('ops-btn-sm','👁 Asset',function(){navigate('asset-detail',node.asset_id);}));
     sidePanelBody.appendChild(panelHdr);
 
-    var meta=div(''); meta.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;';
-    meta.appendChild(span('ops-badge badge-blue',node.type));
-    if (node.asset_id) meta.appendChild(span('ops-mono ops-small','Asset #'+node.asset_id));
-    sidePanelBody.appendChild(meta);
+    // Asset identity block
+    var idBlock=div(''); idBlock.style.cssText='background:#0f172a;border:1px solid #2e3650;border-radius:6px;padding:10px 12px;margin-bottom:10px;';
+    if (node.asset_code) {
+      idBlock.appendChild(el('div',{text:node.asset_code,style:'font-family:monospace;font-size:11px;color:#38bdf8;margin-bottom:3px;'}));
+    }
+    idBlock.appendChild(el('div',{text:node.asset_name||node.label,style:'font-weight:700;color:#e2e8f0;font-size:13px;margin-bottom:4px;'}));
+    var metaRow=div(''); metaRow.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;';
+    metaRow.appendChild(span('ops-badge badge-blue',node.type));
+    if (node.criticality) {
+      var cColor=CRIT_COLORS_PANEL[node.criticality]||'#64748b';
+      var cBadge=el('span',{text:node.criticality,style:'background:'+cColor+'22;color:'+cColor+';font-size:10px;font-weight:800;padding:2px 6px;border-radius:3px;'});
+      metaRow.appendChild(cBadge);
+    }
+    idBlock.appendChild(metaRow);
+    sidePanelBody.appendChild(idBlock);
 
     var st=node.asset_id?(statuses[node.asset_id]||statuses[String(node.asset_id)]):null;
     if (st) {
@@ -8023,6 +8170,278 @@ function showCanvasForm(existing, onSave) {
   }, existing?'Save Changes':'Create Canvas');
 }
 
+async function openMilStdDrawing(canvas, doc, revisions, canvasNodes) {
+  // Fetch supporting data
+  var platform = canvas.platform_id ? await API.platforms.get(canvas.platform_id).catch(()=>null) : null;
+  var settings  = await API.settings.get().catch(()=>({}));
+  var orgName   = settings.org_name || 'Alto Technologies LLC';
+  var cageCode  = settings.cage_code || '—';
+
+  // Also try to fetch a physical canvas for the same platform (elevation sheet)
+  var physCanvas = null;
+  if (canvas.platform_id && canvas.canvas_type !== 'physical') {
+    var allCanvases = await API.canvases.list({platform_id: canvas.platform_id}).catch(()=>[]);
+    physCanvas = allCanvases.find(function(c){ return c.canvas_type === 'physical' && c.id !== canvas.id; }) || null;
+  }
+
+  var TYPE_DRAWING_TITLES = {
+    network:  'NETWORK TOPOLOGY DIAGRAM',
+    hvac:     'HVAC/MECHANICAL SCHEMATIC',
+    power:    'SINGLE LINE POWER DIAGRAM',
+    rf:       'FUNCTIONAL BLOCK DIAGRAM / RF SIGNAL FLOW',
+    physical: 'INSTALLATION / FLOOR PLAN DRAWING',
+    custom:   'SYSTEM FUNCTIONAL BLOCK DIAGRAM',
+  };
+  var drawingTitle = TYPE_DRAWING_TITLES[canvas.canvas_type] || 'SYSTEM DRAWING';
+  var currentRev   = doc.current_rev || revisions[revisions.length-1]?.revision || 'A';
+  var pubDate      = doc.updated_at ? doc.updated_at.slice(0,10) : new Date().toISOString().slice(0,10);
+  var sheetCount   = 4 + (physCanvas ? 1 : 0); // title + diagram + equip list + iface list [+ elevation]
+  var platformName = platform ? platform.name : '—';
+
+  // Parse canvas data for nodes/edges
+  var cd = JSON.parse(canvas.canvas_data || '{"nodes":[],"edges":[]}');
+  var nodes = cd.nodes || [];
+  var edges = cd.edges || [];
+
+  // ── SVG re-render of canvas diagram ─────────────────────────────
+  var CRIT_C={'CR':'#c00','DE':'#c60','RD':'#cc0','SP':'#06c','AD':'#666'};
+  var NW=150, NH=60;
+  var allX=nodes.map(function(n){return n.x+NW;}); var allY=nodes.map(function(n){return n.y+NH;});
+  var svgW=Math.max(600, allX.length?Math.max.apply(null,allX)+60:600);
+  var svgH=Math.max(400, allY.length?Math.max.apply(null,allY)+60:400);
+
+  var edgeSvg=''; var nodeSvg='';
+  edges.forEach(function(e){
+    var s=nodes.find(function(n){return n.id===e.from;}); var d2=nodes.find(function(n){return n.id===e.to;});
+    if(!s||!d2) return;
+    var x1=s.x+NW/2,y1=s.y+NH/2,x2=d2.x+NW/2,y2=d2.y+NH/2;
+    edgeSvg+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="#334155" stroke-width="1.5" marker-end="url(#arr)"/>';
+    if(e.label) edgeSvg+='<text x="'+((x1+x2)/2)+'" y="'+(((y1+y2)/2)-5)+'" text-anchor="middle" font-size="8" fill="#64748b">'+e.label+'</text>';
+  });
+  nodes.forEach(function(n){
+    var nw=n.w||NW, nh=n.h||NH;
+    var bg=n.type==='network'?'#1e3a5f':n.type==='software'?'#1a3020':n.type==='firmware'?'#3a2800':'#1e2540';
+    nodeSvg+='<rect x="'+n.x+'" y="'+n.y+'" width="'+nw+'" height="'+nh+'" rx="4" fill="'+bg+'" stroke="#2e3650" stroke-width="1"/>';
+    nodeSvg+='<line x1="'+(n.x+1)+'" y1="'+(n.y+20)+'" x2="'+(n.x+nw-1)+'" y2="'+(n.y+20)+'" stroke="#1e2540" stroke-width="1"/>';
+    var code=n.asset_code||n.label||'';
+    nodeSvg+='<text x="'+(n.x+nw/2)+'" y="'+(n.y+12)+'" text-anchor="middle" dominant-baseline="middle" font-size="8" font-family="monospace" fill="#1d6fa8">'+code+'</text>';
+    var name=(n.asset_name||n.label||'');
+    nodeSvg+='<text x="'+(n.x+nw/2)+'" y="'+(n.y+38)+'" text-anchor="middle" dominant-baseline="middle" font-size="10" fill="#333">'+name.slice(0,20)+'</text>';
+    if(n.criticality&&CRIT_C[n.criticality]){
+      nodeSvg+='<circle cx="'+(n.x+8)+'" cy="'+(n.y+8)+'" r="5" fill="'+CRIT_C[n.criticality]+'"/>';
+      nodeSvg+='<text x="'+(n.x+8)+'" y="'+(n.y+8)+'" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="#fff" font-weight="800">'+n.criticality+'</text>';
+    }
+  });
+  var diagramSvg='<svg xmlns="http://www.w3.org/2000/svg" width="'+svgW+'" height="'+svgH+'" style="background:#fff;">'
+    +'<defs><marker id="arr" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#666"/></marker></defs>'
+    +edgeSvg+nodeSvg+'</svg>';
+
+  // ── Parts list table rows ──────────────────────────────────────
+  var partsRows='';
+  nodes.forEach(function(n,i){
+    partsRows+='<tr><td>'+(i+1)+'</td><td style="font-family:monospace;">'+(n.asset_code||'—')+'</td>'
+      +'<td>'+(n.asset_name||n.label||'—')+'</td><td>'+(n.type||'—')+'</td>'
+      +'<td>'+(n.criticality||'—')+'</td><td>'+(n.asset_id?'Asset #'+n.asset_id:'Manual')+'</td></tr>';
+  });
+
+  // ── Interface list table rows ──────────────────────────────────
+  var ifaceRows='';
+  edges.forEach(function(e,i){
+    var s=nodes.find(function(n){return n.id===e.from;})||{};
+    var d2=nodes.find(function(n){return n.id===e.to;})||{};
+    ifaceRows+='<tr><td>'+(i+1)+'</td>'
+      +'<td style="font-family:monospace;">'+(s.asset_code||s.label||'—')+'</td>'
+      +'<td style="font-family:monospace;">'+(d2.asset_code||d2.label||'—')+'</td>'
+      +'<td>'+(e.label||'—')+'</td></tr>';
+  });
+
+  // ── Revision history rows ──────────────────────────────────────
+  var revRows='';
+  (revisions||[]).slice().reverse().forEach(function(r){
+    revRows+='<tr><td style="font-family:monospace;font-weight:700;">'+r.revision+'</td>'
+      +'<td>'+(r.created_at||'').slice(0,10)+'</td>'
+      +'<td>'+r.change_desc+'</td>'
+      +'<td>'+(r.author||'—')+'</td>'
+      +'<td>'+(r.approved_by||'—')+'</td></tr>';
+  });
+
+  // ── Title block HTML (MIL-STD-100G style) ─────────────────────
+  function titleBlock(sheet, totalSheets) {
+    return '<div class="title-block">'
+      +'<div class="tb-title"><div class="tb-label">TITLE</div><div class="tb-value" style="font-size:11px;font-weight:700;">'+orgName+'<br>'+canvas.name+'</div></div>'
+      +'<div class="tb-right">'
+        +'<div class="tb-row"><div class="tb-cell"><div class="tb-label">SIZE</div><div class="tb-value">B</div></div>'
+          +'<div class="tb-cell" style="flex:2;"><div class="tb-label">CAGE CODE</div><div class="tb-value">'+cageCode+'</div></div>'
+          +'<div class="tb-cell" style="flex:3;"><div class="tb-label">DRAWING NUMBER</div><div class="tb-value" style="font-family:monospace;font-size:10px;">'+doc.doc_number+'</div></div>'
+          +'<div class="tb-cell"><div class="tb-label">REV</div><div class="tb-value" style="font-weight:800;">'+currentRev+'</div></div></div>'
+        +'<div class="tb-row">'
+          +'<div class="tb-cell" style="flex:2;"><div class="tb-label">PLATFORM</div><div class="tb-value">'+platformName+'</div></div>'
+          +'<div class="tb-cell" style="flex:2;"><div class="tb-label">DATE</div><div class="tb-value">'+pubDate+'</div></div>'
+          +'<div class="tb-cell" style="flex:2;"><div class="tb-label">SHEET</div><div class="tb-value">'+sheet+' OF '+totalSheets+'</div></div>'
+        +'</div>'
+        +'<div class="tb-row">'
+          +'<div class="tb-cell" style="flex:3;"><div class="tb-label">APPROVED BY</div><div class="tb-value">'+(revisions&&revisions[revisions.length-1]?.approved_by||'—')+'</div></div>'
+          +'<div class="tb-cell" style="flex:5;"><div class="tb-label">DRAWING TYPE</div><div class="tb-value" style="font-size:9px;">'+drawingTitle+'</div></div>'
+        +'</div>'
+      +'</div>'
+    +'</div>';
+  }
+
+  // ── Elevation / physical sheet ─────────────────────────────────
+  var elevationSheet='';
+  if (physCanvas) {
+    var pcd=JSON.parse(physCanvas.canvas_data||'{"nodes":[],"edges":[]}');
+    var pnodes=pcd.nodes||[]; var pedges=pcd.edges||[];
+    var pX=pnodes.map(function(n){return n.x+NW;}); var pY=pnodes.map(function(n){return n.y+NH;});
+    var psvgW=Math.max(600,pX.length?Math.max.apply(null,pX)+60:600);
+    var psvgH=Math.max(400,pY.length?Math.max.apply(null,pY)+60:400);
+    var pedgeSvg='',pnodeSvg='';
+    pedges.forEach(function(e){
+      var s=pnodes.find(function(n){return n.id===e.from;}); var d2=pnodes.find(function(n){return n.id===e.to;});
+      if(!s||!d2) return;
+      pedgeSvg+='<line x1="'+(s.x+NW/2)+'" y1="'+(s.y+NH/2)+'" x2="'+(d2.x+NW/2)+'" y2="'+(d2.y+NH/2)+'" stroke="#334155" stroke-width="1.5"/>';
+    });
+    pnodes.forEach(function(n){
+      var nw=n.w||NW, nh=n.h||NH;
+      pnodeSvg+='<rect x="'+n.x+'" y="'+n.y+'" width="'+nw+'" height="'+nh+'" rx="4" fill="#f0f4f8" stroke="#64748b" stroke-width="1"/>';
+      pnodeSvg+='<text x="'+(n.x+nw/2)+'" y="'+(n.y+NH/2)+'" text-anchor="middle" dominant-baseline="middle" font-size="10" fill="#1e293b">'+(n.asset_name||n.label||'').slice(0,18)+'</text>';
+    });
+    var physSvg='<svg xmlns="http://www.w3.org/2000/svg" width="'+psvgW+'" height="'+psvgH+'" style="background:#fff;">'+pedgeSvg+pnodeSvg+'</svg>';
+    elevationSheet='<div class="sheet"><div class="sheet-border"><div class="zone-bar"><span>D</span><span>C</span><span>B</span><span>A</span></div>'
+      +'<div class="sheet-content"><div class="sheet-title">INSTALLATION / FLOOR PLAN DRAWING — '+physCanvas.name+'</div>'
+      +'<div style="overflow:auto;margin-top:8px;">'+physSvg+'</div></div>'
+      +titleBlock(3, totalSheets)+'</div></div>';
+  } else {
+    elevationSheet='<div class="sheet"><div class="sheet-border"><div class="zone-bar"><span>D</span><span>C</span><span>B</span><span>A</span></div>'
+      +'<div class="sheet-content"><div class="sheet-title">INSTALLATION / ELEVATION DRAWING</div>'
+      +'<div style="margin-top:40px;text-align:center;color:#64748b;font-size:13px;padding:40px;">'
+      +'No physical layout canvas found for this platform.<br>Create a canvas of type "Physical Layout" for this platform to auto-include the elevation drawing here.<br><br>'
+      +'Reference: '+doc.doc_number+'-ELEV (to be issued separately)'
+      +'</div></div>'+titleBlock(3, sheetCount)+'</div></div>';
+  }
+
+  var totalSheets = sheetCount;
+
+  var html='<!DOCTYPE html><html><head><meta charset="UTF-8">'
+    +'<title>'+doc.doc_number+' Rev '+currentRev+' — '+canvas.name+'</title>'
+    +'<style>'
+    +'*{box-sizing:border-box;margin:0;padding:0;}'
+    +'body{background:#e5e7eb;font-family:"Arial",sans-serif;font-size:11px;color:#1e293b;}'
+    +'.sheet{width:17in;min-height:11in;background:#fff;margin:20px auto;position:relative;page-break-after:always;}'
+    +'@media print{'
+      +'.sheet{margin:0;page-break-after:always;width:100%;}'
+      +'body{background:#fff;}'
+      +'.no-print{display:none!important;}'
+    +'}'
+    +'.sheet-border{border:2px solid #000;margin:0.4in 0.38in 0.38in 0.75in;min-height:9.9in;display:flex;flex-direction:column;}'
+    +'.zone-bar{display:flex;justify-content:space-around;border-bottom:1px solid #000;padding:2px 0;font-size:9px;font-weight:700;color:#666;}'
+    +'.sheet-content{flex:1;padding:16px;overflow:hidden;}'
+    +'.sheet-title{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:12px;}'
+    /* Title block */
+    +'.title-block{display:flex;border-top:2px solid #000;height:90px;}'
+    +'.tb-title{flex:2;border-right:1px solid #000;padding:4px 6px;display:flex;flex-direction:column;}'
+    +'.tb-right{flex:3;display:flex;flex-direction:column;}'
+    +'.tb-row{display:flex;flex:1;border-top:1px solid #000;}'
+    +'.tb-row:first-child{border-top:none;}'
+    +'.tb-cell{flex:1;border-right:1px solid #000;padding:2px 5px;display:flex;flex-direction:column;}'
+    +'.tb-cell:last-child{border-right:none;}'
+    +'.tb-label{font-size:7px;color:#666;text-transform:uppercase;letter-spacing:0.3px;}'
+    +'.tb-value{font-size:10px;font-weight:600;flex:1;display:flex;align-items:center;}'
+    /* Cover sheet */
+    +'.cover-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;}'
+    +'.cover-field{border-bottom:1px solid #64748b;padding:6px 0 3px;margin-bottom:12px;}'
+    +'.cover-label{font-size:8px;color:#666;text-transform:uppercase;letter-spacing:0.5px;}'
+    +'.cover-value{font-size:12px;font-weight:600;margin-top:2px;}'
+    +'.sheet-index{margin-top:20px;}'
+    +'.sheet-index th{background:#1e293b;color:#fff;padding:5px 8px;font-size:9px;text-transform:uppercase;}'
+    +'.sheet-index td{padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:11px;}'
+    /* Parts / interface tables */
+    +'table.data-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:10px;}'
+    +'table.data-table th{background:#1e293b;color:#fff;padding:5px 8px;text-align:left;}'
+    +'table.data-table td{padding:5px 8px;border-bottom:1px solid #e2e8f0;}'
+    +'table.data-table tr:nth-child(even) td{background:#f8fafc;}'
+    /* Print toolbar */
+    +'.toolbar{background:#1e293b;color:#fff;padding:10px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:99;}'
+    +'.toolbar button{background:#38bdf8;color:#000;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:700;font-size:12px;}'
+    +'</style></head><body>'
+    // Toolbar
+    +'<div class="toolbar no-print">'
+      +'<strong>'+doc.doc_number+' Rev '+currentRev+'</strong>'
+      +'<span style="opacity:.6;">'+canvas.name+'</span>'
+      +'<button onclick="window.print()">🖨 Print / Save PDF</button>'
+      +'<span style="opacity:.5;font-size:10px;">Use landscape for best results · Print all '+totalSheets+' sheets</span>'
+    +'</div>'
+
+    // ── Sheet 1: Cover / Title Page ────────────────────────────
+    +'<div class="sheet"><div class="sheet-border"><div class="zone-bar"><span>D</span><span>C</span><span>B</span><span>A</span></div>'
+    +'<div class="sheet-content">'
+    +'<div style="text-align:center;margin-bottom:24px;">'
+      +'<div style="font-size:9px;color:#666;letter-spacing:2px;text-transform:uppercase;">'+orgName+'</div>'
+      +'<div style="font-size:20px;font-weight:900;margin:6px 0;">'+canvas.name+'</div>'
+      +'<div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:1px;">'+drawingTitle+'</div>'
+    +'</div>'
+    +'<div class="cover-grid">'
+      +'<div><div class="cover-field"><div class="cover-label">Drawing Number</div><div class="cover-value" style="font-family:monospace;">'+doc.doc_number+'</div></div>'
+      +'<div class="cover-field"><div class="cover-label">Revision</div><div class="cover-value">'+currentRev+'</div></div>'
+      +'<div class="cover-field"><div class="cover-label">Platform</div><div class="cover-value">'+platformName+'</div></div>'
+      +'<div class="cover-field"><div class="cover-label">Date</div><div class="cover-value">'+pubDate+'</div></div></div>'
+      +'<div><div class="cover-field"><div class="cover-label">Organization</div><div class="cover-value">'+orgName+'</div></div>'
+      +'<div class="cover-field"><div class="cover-label">CAGE Code</div><div class="cover-value">'+cageCode+'</div></div>'
+      +'<div class="cover-field"><div class="cover-label">Canvas Type</div><div class="cover-value">'+drawingTitle+'</div></div>'
+      +'<div class="cover-field"><div class="cover-label">Current Revision</div><div class="cover-value">'+currentRev+'</div></div></div>'
+    +'</div>'
+    // Sheet index
+    +'<table class="sheet-index data-table" style="margin-top:20px;">'
+      +'<thead><tr><th>Sheet</th><th>Title</th><th>Rev</th></tr></thead><tbody>'
+      +'<tr><td>1</td><td>Cover / Title Page</td><td>'+currentRev+'</td></tr>'
+      +'<tr><td>2</td><td>'+drawingTitle+' — '+canvas.name+'</td><td>'+currentRev+'</td></tr>'
+      +(physCanvas?'<tr><td>3</td><td>Installation / Floor Plan — '+physCanvas.name+'</td><td>'+currentRev+'</td></tr>':'<tr><td>3</td><td>Installation / Elevation Drawing (see reference)</td><td>—</td></tr>')
+      +'<tr><td>'+(physCanvas?4:3)+'</td><td>Equipment / Parts List</td><td>'+currentRev+'</td></tr>'
+      +'<tr><td>'+(physCanvas?5:4)+'</td><td>Interface / Connection List</td><td>'+currentRev+'</td></tr>'
+      +'</tbody></table>'
+    +'</div>'
+    +titleBlock(1, totalSheets)+'</div></div>'
+
+    // ── Sheet 2: Block Diagram ─────────────────────────────────
+    +'<div class="sheet"><div class="sheet-border"><div class="zone-bar"><span>D</span><span>C</span><span>B</span><span>A</span></div>'
+    +'<div class="sheet-content"><div class="sheet-title">'+drawingTitle+'</div>'
+    +'<div style="overflow:auto;">'+diagramSvg+'</div></div>'
+    +titleBlock(2, totalSheets)+'</div></div>'
+
+    // ── Sheet 3: Elevation / Physical ─────────────────────────
+    +elevationSheet
+
+    // ── Sheet 4 (or 3): Equipment / Parts List ────────────────
+    +'<div class="sheet"><div class="sheet-border"><div class="zone-bar"><span>D</span><span>C</span><span>B</span><span>A</span></div>'
+    +'<div class="sheet-content"><div class="sheet-title">EQUIPMENT / PARTS LIST</div>'
+    +'<table class="data-table">'
+      +'<thead><tr><th>#</th><th>Asset Code</th><th>Name / Description</th><th>Type</th><th>Criticality</th><th>Registry Ref</th></tr></thead>'
+      +'<tbody>'+partsRows+'</tbody></table>'
+    +(nodes.length===0?'<div style="text-align:center;color:#64748b;margin-top:40px;">No nodes defined on canvas.</div>':'')
+    +'</div>'
+    +titleBlock(physCanvas?4:3, totalSheets)+'</div></div>'
+
+    // ── Sheet 5 (or 4): Interface / Connection List ────────────
+    +'<div class="sheet"><div class="sheet-border"><div class="zone-bar"><span>D</span><span>C</span><span>B</span><span>A</span></div>'
+    +'<div class="sheet-content"><div class="sheet-title">INTERFACE / CONNECTION LIST</div>'
+    +'<table class="data-table">'
+      +'<thead><tr><th>#</th><th>From (Code)</th><th>To (Code)</th><th>Interface / Signal</th></tr></thead>'
+      +'<tbody>'+ifaceRows+'</tbody></table>'
+    +(edges.length===0?'<div style="text-align:center;color:#64748b;margin-top:40px;">No connections defined on canvas.</div>':'')
+    +'<div style="margin-top:24px;">'
+    +'<table class="data-table"><thead><tr><th>Rev</th><th>Date</th><th>Description</th><th>Author</th><th>Approved By</th></tr></thead>'
+    +'<tbody>'+revRows+'</tbody></table>'
+    +'</div>'
+    +'</div>'
+    +titleBlock(physCanvas?5:4, totalSheets)+'</div></div>'
+
+    +'</body></html>';
+
+  var win=window.open('','_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+  else { alert('Pop-up blocked — allow pop-ups for this page to view the MIL-STD drawing.'); }
+}
+
 function showPublishDrawingForm(canvas, onDone) {
   var TYPE_LABELS = {
     network:'Network Topology Diagram', hvac:'HVAC/Mechanical Schematic',
@@ -8056,12 +8475,25 @@ function showPublishDrawingForm(canvas, onDone) {
   modal('📐 Publish MIL-STD Drawing', fWrap, async function() {
     if (!f.revision.value.trim()) { alert('Revision label is required.'); return; }
     if (!f.changeDesc.value.trim()) { alert('Change description is required.'); return; }
-    await API.canvases.publish(canvas.id, {
+    var result = await API.canvases.publish(canvas.id, {
       revision:    f.revision.value.trim(),
       change_desc: f.changeDesc.value.trim(),
       baseline:    f.baseline.value.trim() || null,
       approved_by: f.approvedBy.value.trim() || null,
     });
+    // Show confirmation with view link
+    var conf = div('');
+    conf.style.cssText='background:#0f172a;border:1px solid #166534;border-radius:8px;padding:16px 20px;';
+    conf.appendChild(el('div',{text:'✓ Drawing Published',style:'color:#4ade80;font-weight:800;font-size:14px;margin-bottom:10px;'}));
+    conf.appendChild(el('div',{text:'Document: '+result.document.doc_number,style:'font-family:monospace;color:#38bdf8;margin-bottom:3px;'}));
+    conf.appendChild(el('div',{text:'Title: '+result.document.title,style:'color:#e2e8f0;margin-bottom:3px;'}));
+    conf.appendChild(el('div',{text:'Revision: '+result.revision.revision+' — '+result.revision.change_desc,style:'color:#94a3b8;font-size:12px;margin-bottom:12px;'}));
+    var viewBtn=btn('primary','📄 Open MIL-STD Drawing',async function(){
+      var revs=await API.documents.getRevisions(result.document.id).catch(()=>[result.revision]);
+      openMilStdDrawing(canvas, result.document, revs, canvas._nodeCache||[]);
+    });
+    conf.appendChild(viewBtn);
+    modal('Drawing Published', conf, null, null, true);
     if (onDone) onDone();
   }, 'Publish Drawing');
 }

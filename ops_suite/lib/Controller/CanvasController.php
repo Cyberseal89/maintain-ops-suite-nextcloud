@@ -232,6 +232,10 @@ class CanvasController extends Controller {
             $doc->setStatus('active');
             $doc->setPlatformId($canvas->getPlatformId());
             $doc->setCanvasId($canvas->getId());
+            // Auto-attach to the system asset so it appears in the asset's doc list
+            if ($canvas->getSystemAssetId()) {
+                $doc->setAssetId($canvas->getSystemAssetId());
+            }
             $doc->setApplicability('');
             $doc->setNotes('Auto-generated from System Canvas. Canvas ID: ' . $canvas->getId());
             $doc->setLocalUuid(null);
