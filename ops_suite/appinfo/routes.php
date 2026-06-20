@@ -197,6 +197,12 @@ return [
         ['name' => 'fmea#update_entry',       'url' => '/api/fmea/worksheets/{worksheetId}/entries/{entryId}',   'verb' => 'PUT'],
         ['name' => 'fmea#destroy_entry',      'url' => '/api/fmea/worksheets/{worksheetId}/entries/{entryId}',   'verb' => 'DELETE'],
 
+        // ── RCM Decisions ─────────────────────────────────────────
+        ['name' => 'rcm#index',   'url' => '/api/rcm/decisions',      'verb' => 'GET'],
+        ['name' => 'rcm#show',    'url' => '/api/rcm/decisions/{id}', 'verb' => 'GET'],
+        ['name' => 'rcm#upsert',  'url' => '/api/rcm/decisions',      'verb' => 'POST'],
+        ['name' => 'rcm#destroy', 'url' => '/api/rcm/decisions/{id}', 'verb' => 'DELETE'],
+
         // ── Component Library ─────────────────────────────────────
         ['name' => 'component_library#index',   'url' => '/api/component-library',      'verb' => 'GET'],
         ['name' => 'component_library#show',    'url' => '/api/component-library/{id}', 'verb' => 'GET'],

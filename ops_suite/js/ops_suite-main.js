@@ -1,5 +1,5 @@
 /**
- * OpsSuite v3.18.0
+ * OpsSuite v3.19.0
  * Sprint 0A/0B: shops, asset coding (TYPE-SHOP-POSITION), criticality,
  * readiness engine, local_uuid offline sync foundation.
  */
@@ -240,6 +240,10 @@ var API = {
                   destroy: id    => req('DELETE', '/api/canvases/'+id),
                   status:  id    => req('GET',    '/api/canvases/'+id+'/status'),
                   publish: (id,d)=> req('POST',   '/api/canvases/'+id+'/publish', d) },
+  rcm:          { list:    p     => req('GET',    '/api/rcm/decisions'+qs(p)),
+                  get:     id    => req('GET',    '/api/rcm/decisions/'+id),
+                  upsert:  d     => req('POST',   '/api/rcm/decisions', d),
+                  destroy: id    => req('DELETE', '/api/rcm/decisions/'+id) },
   componentLib: { list:    p     => req('GET',    '/api/component-library'+qs(p)),
                   get:     id    => req('GET',    '/api/component-library/'+id),
                   create:  d     => req('POST',   '/api/component-library', d),
@@ -7572,6 +7576,9 @@ async function viewCanvases() {
 
     if (activeTab === 'canvases') {
       hdrBtn.appendChild(btn('primary','+ New Canvas',()=>showCanvasForm(null,renderCanvasTab)));
+      if (_selectedPlatformIds.length) {
+        hdrBtn.appendChild(btn('','🗺 Platform Drawing', function(){ openPlatformDrawing(_selectedPlatformIds[0]); }));
+      }
 
       var [canvases, allAssets] = await Promise.all([
         API.canvases.list(_selectedPlatformIds.length?{platform_id:_selectedPlatformIds[0]}:{}).catch(()=>[]),
@@ -8416,7 +8423,8 @@ async function viewFmeaWorksheet(id) {
   var ws = await API.fmea.getWorksheet(id).catch(()=>null);
   if (!ws) { setContent(el('div',{cls:'ops-empty',text:'Worksheet not found.'})); return; }
 
-  var entries = ws.entries || [];
+  var [entries, rcmList] = [ws.entries || [], await API.rcm.list({worksheet_id: ws.id}).catch(()=>[])];
+  var rcmByEntry = {}; rcmList.forEach(function(r){ rcmByEntry[r.fmea_entry_id]=r; });
 
   var wrap = div('');
   var hdr  = div('ops-page-header');
@@ -8458,7 +8466,7 @@ async function viewFmeaWorksheet(id) {
     card.appendChild(el('p',{cls:'ops-empty',text:'No entries yet. Click "+ Add Entry" to start the analysis.'}));
   } else {
     var tbl = makeTable(
-      ['#','Function','Failure Mode','Local Effect','System Effect','S','O','D','RPN','Actions',''],
+      ['#','Function','Failure Mode','Local Effect','System Effect','S','O','D','RPN','RCM Decision','Actions'],
       entries.map(function(e, i) {
         var rpn = e.rpn;
         var rpnCell = div(''); rpnCell.style.cssText='display:flex;flex-direction:column;align-items:center;gap:2px;';
@@ -8468,9 +8476,18 @@ async function viewFmeaWorksheet(id) {
           rpnCell.appendChild(el('span',{text:'→'+e.revised_rpn,style:'font-size:10px;color:#4ade80;font-weight:700;'}));
         }
 
-        var actCell = div(''); actCell.style.cssText='font-size:11px;max-width:160px;';
-        if (e.recommended_action) actCell.appendChild(el('div',{text:e.recommended_action,style:'color:#cbd5e1;margin-bottom:2px;'}));
-        if (e.responsible_party)  actCell.appendChild(el('div',{text:'→ '+e.responsible_party,style:'color:#64748b;'}));
+        // RCM cell
+        var rcmCell = div(''); rcmCell.style.cssText='font-size:10px;min-width:130px;';
+        var rcmDec = rcmByEntry[e.id];
+        if (rcmDec) {
+          var taskTypeLabels = {on_condition:'On-Condition',scheduled_restoration:'Sched. Restore',scheduled_discard:'Sched. Discard',failure_finding:'Failure Finding',run_to_failure:'Run-to-Failure',redesign:'Redesign / No PM'};
+          rcmCell.appendChild(el('div',{text:taskTypeLabels[rcmDec.task_type]||rcmDec.task_type,style:'color:#38bdf8;font-weight:700;'}));
+          if (rcmDec.task_interval) rcmCell.appendChild(el('div',{text:'Interval: '+rcmDec.task_interval,style:'color:#94a3b8;'}));
+          if (rcmDec.approved_by)   rcmCell.appendChild(el('div',{text:'✓ '+rcmDec.approved_by,style:'color:#4ade80;font-size:9px;'}));
+          rcmCell.appendChild(btn('ops-btn-sm','✏ RCM', function(){ showRcmDecisionForm(ws, e, rcmDec, function(){ viewFmeaWorksheet(id); }); }));
+        } else {
+          rcmCell.appendChild(btn('ops-btn-sm','+ RCM', function(){ showRcmDecisionForm(ws, e, null, function(){ viewFmeaWorksheet(id); }); }));
+        }
 
         var btnG = div('ops-btn-group');
         btnG.appendChild(btn('ops-btn-sm','✏', function(){ showFmeaEntryForm(ws, e, function(){ viewFmeaWorksheet(id); }); }));
@@ -8490,7 +8507,7 @@ async function viewFmeaWorksheet(id) {
           el('span',{text:String(e.occurrence),  style:'font-weight:700;color:#fb923c;'}),
           el('span',{text:String(e.detectability),style:'font-weight:700;color:#fbbf24;'}),
           rpnCell,
-          actCell,
+          rcmCell,
           btnG,
         ];
       })
@@ -8617,6 +8634,115 @@ async function showFmeaEntryForm(ws, existing, onSave) {
 }
 
 // ── FMEA Publish form ────────────────────────────────────────────────────
+// ── RCM Decision Form ─────────────────────────────────────────────────────
+function showRcmDecisionForm(ws, fmeaEntry, existing, onSave) {
+  // MSG-3/S4000P guided decision tree
+  var VISIBILITY_OPTS = [['evident','Evident — Operators will notice the failure'],['hidden','Hidden — Failure is not apparent during normal operation']];
+  var CONSEQUENCE_OPTS = [
+    ['safety',      'Safety — Could injure or kill personnel'],
+    ['environmental','Environmental — Regulatory / environmental impact'],
+    ['operational', 'Operational — Reduces capability / output'],
+    ['economic',    'Economic / Non-operational — Only a repair cost'],
+  ];
+  var TASK_TYPE_OPTS = [
+    ['on_condition',          'On-Condition (OC) — Inspect/test to detect potential failure'],
+    ['scheduled_restoration', 'Scheduled Restoration (SR) — Restore at fixed interval'],
+    ['scheduled_discard',     'Scheduled Discard (SD) — Replace at fixed interval'],
+    ['failure_finding',       'Failure Finding (FF) — Verify hidden function still works'],
+    ['run_to_failure',        'Run-to-Failure (RTF) — Accept failure, repair on occurrence'],
+    ['redesign',              'Redesign / Change — Default tasks are not applicable'],
+  ];
+  // RPN-guided default task type
+  var rpn = fmeaEntry.rpn || 0;
+  var defaultTask = rpn >= 200 ? 'on_condition' : rpn >= 100 ? 'scheduled_restoration' : 'run_to_failure';
+  var defaultVis  = 'evident';
+  var defaultCons = rpn >= 200 ? 'safety' : 'operational';
+
+  var fld = function(label, input) {
+    var w=div(''); w.style.marginBottom='12px';
+    w.appendChild(el('label',{text:label,style:'display:block;font-size:11px;color:#94a3b8;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;'}));
+    w.appendChild(input); return w;
+  };
+  var sel = function(opts, val) {
+    var s=document.createElement('select'); s.style.cssText='width:100%;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:8px;font-size:12px;';
+    opts.forEach(function(o){ var op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; if(o[0]===(val||o[0])) op.selected=true; s.appendChild(op); });
+    return s;
+  };
+  var ta = function(val, ph) {
+    var t=document.createElement('textarea'); t.rows=3; t.value=val||''; t.placeholder=ph||'';
+    t.style.cssText='width:100%;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:8px;font-size:12px;resize:vertical;';
+    return t;
+  };
+  var inp = function(val, ph) {
+    var i=document.createElement('input'); i.type='text'; i.value=val||''; i.placeholder=ph||'';
+    i.style.cssText='width:100%;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:8px;font-size:12px;';
+    return i;
+  };
+
+  // Guided hint block
+  var hintEl = div(''); hintEl.style.cssText='background:#1e293b;border-left:3px solid #38bdf8;padding:8px 12px;border-radius:4px;font-size:11px;color:#94a3b8;margin-bottom:14px;';
+  function updateHint(vis, cons, task) {
+    var hints = [];
+    if (vis==='hidden') hints.push('Hidden failures must have a Failure Finding task unless redesign is chosen.');
+    if (cons==='safety'||cons==='environmental') hints.push('Safety/environmental consequences require an effective PM task before RTF is allowed.');
+    if (task==='run_to_failure' && (cons==='safety'||cons==='environmental')) {
+      hintEl.style.borderColor='#f87171'; hints.push('⚠ RTF is NOT acceptable for safety/environmental consequences per MSG-3 Section 3.');
+    } else { hintEl.style.borderColor='#38bdf8'; }
+    hintEl.textContent = hints.length ? hints.join(' ') : 'Select failure visibility and consequence to see MSG-3 guidance.';
+  }
+
+  var visEl  = sel(VISIBILITY_OPTS,  existing?.failure_visibility  || defaultVis);
+  var consEl = sel(CONSEQUENCE_OPTS, existing?.failure_consequence || defaultCons);
+  var taskEl = sel(TASK_TYPE_OPTS,   existing?.task_type           || defaultTask);
+  var intEl  = inp(existing?.task_interval, 'e.g. 500 FH, 90 Days, 12 Months');
+  var basisEl= ta(existing?.interval_basis, 'Engineering rationale, reliability data, OEM recommendation…');
+  var ratEl  = ta(existing?.rationale,      'Decision rationale, MSG-3 logic path taken…');
+  var approEl= inp(existing?.approved_by,   'Approver name / title');
+
+  function refreshHint(){ updateHint(visEl.value, consEl.value, taskEl.value); }
+  visEl.onchange=refreshHint; consEl.onchange=refreshHint; taskEl.onchange=refreshHint;
+  refreshHint();
+
+  var entryName = fmeaEntry.failure_mode || fmeaEntry.function || 'Entry #'+fmeaEntry.id;
+  var body = div(''); body.style.maxHeight='70vh'; body.style.overflowY='auto';
+  body.appendChild(el('div',{text:'FMEA entry: '+entryName,style:'color:#64748b;font-size:11px;margin-bottom:12px;'}));
+  // RPN indicator
+  var rpnBadge = el('div',{text:'RPN: '+rpn+' ('+rpnLabel(rpn)+')',style:'display:inline-block;padding:4px 10px;border-radius:4px;background:'+rpnColor(rpn)+'22;color:'+rpnColor(rpn)+';font-weight:700;font-size:12px;margin-bottom:12px;'});
+  body.appendChild(rpnBadge);
+  body.appendChild(hintEl);
+  body.appendChild(fld('Failure Visibility', visEl));
+  body.appendChild(fld('Failure Consequence', consEl));
+  body.appendChild(fld('Maintenance Task Type (MSG-3)', taskEl));
+  body.appendChild(fld('Task Interval', intEl));
+  body.appendChild(fld('Interval Basis', basisEl));
+  body.appendChild(fld('Decision Rationale', ratEl));
+  body.appendChild(fld('Approved By', approEl));
+
+  showModal('RCM Decision — '+entryName, body, [
+    { label: 'Save Decision', cls: 'primary', action: async function(close) {
+        var data = {
+          fmea_entry_id:       fmeaEntry.id,
+          worksheet_id:        ws.id,
+          failure_visibility:  visEl.value,
+          failure_consequence: consEl.value,
+          task_type:           taskEl.value,
+          task_interval:       intEl.value.trim(),
+          interval_basis:      basisEl.value.trim(),
+          rationale:           ratEl.value.trim(),
+          approved_by:         approEl.value.trim(),
+        };
+        await API.rcm.upsert(data);
+        close(); onSave();
+    }},
+    ...(existing ? [{ label: 'Delete', cls: 'ops-btn-danger', action: async function(close){
+        if (!confirm('Remove this RCM decision?')) return;
+        await API.rcm.destroy(existing.id);
+        close(); onSave();
+    }}] : []),
+    { label: 'Cancel', cls: '', action: function(close){ close(); }},
+  ]);
+}
+
 function showFmeaPublishForm(ws, onDone) {
   var fWrap = div('ops-form-grid');
   function add(l,i,full,hint){ fWrap.appendChild(fg(l,i,full,hint)); return i; }
@@ -8743,14 +8869,243 @@ function showCanvasForm(existing, onSave) {
   }, existing?'Save Changes':'Create Canvas');
 }
 
-async function openMilStdDrawing(canvas, doc, revisions, canvasNodes) {
-  // Fetch supporting data
-  var platform = canvas.platform_id ? await API.platforms.get(canvas.platform_id).catch(()=>null) : null;
-  var settings  = await API.settings.get().catch(()=>({}));
-  var orgName   = settings.org_name || 'Alto Technologies LLC';
-  var cageCode  = settings.cage_code || '—';
+// ── Platform-level drawing ────────────────────────────────────────────────
+async function openPlatformDrawing(platformId) {
+  var [platform, settings, allCanvases, allAssets] = await Promise.all([
+    API.platforms.get(platformId).catch(()=>null),
+    API.settings.get().catch(()=>({})),
+    API.canvases.list({platform_id: platformId}).catch(()=>[]),
+    getAssets().catch(()=>[]),
+  ]);
+  if (!platform) { alert('Platform not found.'); return; }
 
-  // Also try to fetch a physical canvas for the same platform (elevation sheet)
+  var orgName  = settings.org_name  || 'Alto Technologies LLC';
+  var cageCode = settings.cage_code || '—';
+  var pubDate  = new Date().toISOString().slice(0,10);
+  var assetById = {}; allAssets.forEach(function(a){ assetById[a.id]=a; });
+
+  // Enrich canvas nodes
+  allCanvases.forEach(function(cv){
+    var cd = JSON.parse(cv.canvas_data || '{"nodes":[],"edges":[]}');
+    cv._nodes = cd.nodes || [];
+    cv._edges = cd.edges || [];
+    cv._nodes.forEach(function(node){
+      if (!node.asset_id) return;
+      var a = assetById[node.asset_id]||assetById[String(node.asset_id)];
+      if (!a) return;
+      if (!node.asset_name || node.asset_name===node.label) node.asset_name = a.name||node.asset_name;
+      if (!node.manufacturer) node.manufacturer = a.manufacturer||'';
+      if (!node.model_number) node.model_number = a.model||'';
+      if (!node.criticality)  node.criticality  = a.criticality||null;
+    });
+  });
+
+  var LAYER_ORDER  = ['power','network','rf','hvac','physical','custom'];
+  var LAYER_LABELS = {power:'POWER DISTRIBUTION',network:'DATA / NETWORK',rf:'RF / SIGNAL FLOW',hvac:'HVAC / MECHANICAL',physical:'PHYSICAL INSTALLATION',custom:'FUNCTIONAL SYSTEMS'};
+  var LAYER_COLOR  = {power:'#dc2626',network:'#1d4ed8',rf:'#7c3aed',hvac:'#0891b2',physical:'#15803d',custom:'#334155'};
+
+  // Collect present layers
+  var layers = {};
+  allCanvases.forEach(function(cv){
+    var t = cv.canvas_type||'custom';
+    if (!layers[t]) layers[t] = [];
+    layers[t].push(cv);
+  });
+  var presentLayers = LAYER_ORDER.filter(function(l){return layers[l]&&layers[l].length;});
+  allCanvases.forEach(function(cv){
+    if (!LAYER_ORDER.includes(cv.canvas_type)) {
+      if (!layers.custom) layers.custom=[];
+      if (!layers.custom.includes(cv)) layers.custom.push(cv);
+      if (!presentLayers.includes('custom')) presentLayers.push('custom');
+    }
+  });
+
+  // ── Platform Architecture SVG ──────────────────────────────────────
+  var BOX_W=200, BOX_HBASE=80, NODE_H=14, BOX_GAP_X=24, BOX_GAP_Y=32;
+  var LANE_PAD=16, LANE_LABEL_H=22;
+  var svgRows=[]; var svgH=20;
+
+  presentLayers.forEach(function(lt){
+    var cvs = layers[lt]||[];
+    var rowH = LANE_LABEL_H + Math.max.apply(null, cvs.map(function(cv){
+      return BOX_HBASE + Math.max(0, cv._nodes.length-3)*NODE_H;
+    })) + BOX_GAP_Y;
+    svgRows.push({lt:lt, cvs:cvs, y:svgH, h:rowH});
+    svgH += rowH;
+  });
+  svgH += 20;
+  var svgW = Math.max(700, presentLayers.length ? Math.max.apply(null, presentLayers.map(function(lt){
+    return (layers[lt]||[]).length * (BOX_W+BOX_GAP_X) + LANE_PAD*2;
+  })) : 700);
+
+  var archSvg='<svg xmlns="http://www.w3.org/2000/svg" width="'+svgW+'" height="'+svgH+'" style="background:#fff;border:1px solid #e2e8f0;font-family:Arial,sans-serif;">';
+
+  svgRows.forEach(function(row){
+    var col  = LAYER_COLOR[row.lt]||'#334155';
+    var lbl  = LAYER_LABELS[row.lt]||row.lt.toUpperCase();
+    // Lane background
+    archSvg+='<rect x="0" y="'+row.y+'" width="'+svgW+'" height="'+row.h+'" fill="'+col+'08" stroke="'+col+'33" stroke-width="0.5"/>';
+    // Lane label
+    archSvg+='<text x="12" y="'+(row.y+15)+'" font-size="10" font-weight="800" fill="'+col+'" letter-spacing="1">'+lbl+'</text>';
+
+    row.cvs.forEach(function(cv, ci){
+      var bx = LANE_PAD + ci*(BOX_W+BOX_GAP_X);
+      var by = row.y + LANE_LABEL_H;
+      var bh = BOX_HBASE + Math.max(0, cv._nodes.length-3)*NODE_H;
+      // Box
+      archSvg+='<rect x="'+bx+'" y="'+by+'" width="'+BOX_W+'" height="'+bh+'" rx="5" fill="#fff" stroke="'+col+'" stroke-width="1.5"/>';
+      // Header strip
+      archSvg+='<rect x="'+bx+'" y="'+by+'" width="'+BOX_W+'" height="22" rx="4" fill="'+col+'"/>';
+      // Canvas name
+      var cvName = cv.name.length>26 ? cv.name.slice(0,25)+'…' : cv.name;
+      archSvg+='<text x="'+(bx+BOX_W/2)+'" y="'+(by+13)+'" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="700" fill="#fff">'+cvName+'</text>';
+      // Node count
+      archSvg+='<text x="'+(bx+BOX_W-6)+'" y="'+(by+35)+'" text-anchor="end" font-size="8" fill="'+col+'" font-weight="700">'+cv._nodes.length+' items</text>';
+      // Node list (first 6)
+      cv._nodes.slice(0,6).forEach(function(node, ni){
+        var ny=by+34+ni*NODE_H;
+        var nName=(node.asset_name||node.label||'—').slice(0,24);
+        var nModel=(node.model_number||'').slice(0,16);
+        archSvg+='<text x="'+(bx+8)+'" y="'+ny+'" font-size="8" fill="#1e293b">'+nName+'</text>';
+        if(nModel) archSvg+='<text x="'+(bx+BOX_W-6)+'" y="'+ny+'" text-anchor="end" font-size="7" fill="#94a3b8">'+nModel+'</text>';
+        // Criticality dot
+        if(node.criticality && CRIT_PRINT_PLAT[node.criticality]){
+          archSvg+='<circle cx="'+(bx+BOX_W-32)+'" cy="'+(ny-3)+'" r="3" fill="'+CRIT_PRINT_PLAT[node.criticality]+'"/>';
+        }
+      });
+      if(cv._nodes.length>6) archSvg+='<text x="'+(bx+8)+'" y="'+(by+34+6*NODE_H)+'" font-size="7" fill="#94a3b8">…+'+(cv._nodes.length-6)+' more</text>';
+      // Drawing number badge
+      if(cv.drawing_doc_id || cv.published_rev){
+        archSvg+='<text x="'+(bx+6)+'" y="'+(by+bh-5)+'" font-size="7" fill="'+col+'" font-family="monospace">'+(cv.published_rev?'Rev '+cv.published_rev:'Unpublished')+'</text>';
+      }
+    });
+  });
+  archSvg+='</svg>';
+
+  var CRIT_PRINT_PLAT={CR:'#dc2626',DE:'#ea580c',RD:'#d97706',SP:'#2563eb',AD:'#64748b'};
+
+  // Title block builder
+  function titleBlock(sheet, total) {
+    return '<div class="title-block">'
+      +'<div class="tb-title"><div class="tb-label">TITLE</div><div class="tb-value" style="font-size:11px;font-weight:700;">'+orgName+'<br>'+platform.name+' — SYSTEM ARCHITECTURE</div></div>'
+      +'<div class="tb-right">'
+        +'<div class="tb-row"><div class="tb-cell"><div class="tb-label">SIZE</div><div class="tb-value">B</div></div>'
+          +'<div class="tb-cell" style="flex:2;"><div class="tb-label">CAGE CODE</div><div class="tb-value">'+cageCode+'</div></div>'
+          +'<div class="tb-cell" style="flex:3;"><div class="tb-label">DRAWING NUMBER</div><div class="tb-value" style="font-family:monospace;">PLAT-'+String(platformId).padStart(4,'0')+'-ARCH</div></div>'
+          +'<div class="tb-cell"><div class="tb-label">REV</div><div class="tb-value" style="font-weight:800;">A</div></div></div>'
+        +'<div class="tb-row">'
+          +'<div class="tb-cell" style="flex:2;"><div class="tb-label">PLATFORM</div><div class="tb-value">'+platform.name+'</div></div>'
+          +'<div class="tb-cell" style="flex:2;"><div class="tb-label">DATE</div><div class="tb-value">'+pubDate+'</div></div>'
+          +'<div class="tb-cell" style="flex:2;"><div class="tb-label">SHEET</div><div class="tb-value">'+sheet+' OF '+total+'</div></div>'
+        +'</div>'
+      +'</div>'
+    +'</div>';
+  }
+
+  var totalSheets = 1 + allCanvases.length; // arch + one per system canvas
+
+  // Sheet index rows
+  var sheetIndexRows = allCanvases.map(function(cv,i){
+    var typeLabel = LAYER_LABELS[cv.canvas_type]||cv.canvas_type;
+    return '<tr><td>'+(i+2)+'</td><td>'+cv.name+'</td><td>'+typeLabel+'</td><td>'+(cv.published_rev||'Unpublished')+'</td></tr>';
+  }).join('');
+
+  // Per-system SVG sheets
+  var systemSheets = allCanvases.map(function(cv, i){
+    var nodes2 = cv._nodes; var edges2 = cv._edges;
+    var col2 = LAYER_COLOR[cv.canvas_type]||'#334155';
+    var allX2=nodes2.map(function(n){return n.x+(n.w||170);}); var allY2=nodes2.map(function(n){return n.y+(n.h||70);});
+    var sW=Math.max(600,allX2.length?Math.max.apply(null,allX2)+80:600);
+    var sH=Math.max(350,allY2.length?Math.max.apply(null,allY2)+80:350);
+
+    var eSvg='', nSvg='';
+    edges2.forEach(function(e){
+      var s=nodes2.find(function(n){return n.id===e.from;}); var d2=nodes2.find(function(n){return n.id===e.to;});
+      if(!s||!d2) return;
+      var x1=s.x+(s.w||170)/2, y1=s.y+(s.h||70)/2, x2=d2.x+(d2.w||170)/2, y2=d2.y+(d2.h||70)/2;
+      var ec=e.conn_type?({fiber:'#ea580c',ethernet:'#16a34a',coax:'#ca8a04',serial_232:'#7c3aed',serial_485:'#a855f7',power_ac:'#dc2626',power_dc:'#2563eb',waveguide:'#0891b2',optical:'#db2777',can_bus:'#ea580c'}[e.conn_type]||'#94a3b8'):'#94a3b8';
+      eSvg+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+ec+'" stroke-width="1.5" marker-end="url(#arr2)"/>';
+      if(e.conn_type||e.label){var lp=(e.conn_type||'').replace('_',' ').toUpperCase()+(e.label?' · '+e.label:'');var mx=(x1+x2)/2,my=(y1+y2)/2;var tw=lp.length*5+8;eSvg+='<rect x="'+(mx-tw/2)+'" y="'+(my-8)+'" width="'+tw+'" height="12" fill="#fff" rx="2"/><text x="'+mx+'" y="'+my+'" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="'+ec+'" font-weight="700">'+lp+'</text>';}
+    });
+    nodes2.forEach(function(n){
+      var nw=n.w||170, nh=n.h||70;
+      var bc=col2;
+      var nm=n.asset_name||n.label||'—', md=[n.manufacturer,n.model_number].filter(Boolean).join(' · ');
+      nSvg+='<rect x="'+n.x+'" y="'+n.y+'" width="'+nw+'" height="'+nh+'" rx="4" fill="#fff" stroke="'+bc+'" stroke-width="1.5"/>';
+      nSvg+='<rect x="'+n.x+'" y="'+n.y+'" width="'+nw+'" height="5" rx="2" fill="'+bc+'"/>';
+      nSvg+='<text x="'+(n.x+nw/2)+'" y="'+(n.y+25)+'" text-anchor="middle" dominant-baseline="middle" font-size="11" font-weight="700" fill="#1e293b" font-family="Arial,sans-serif">'+nm.slice(0,22)+'</text>';
+      if(md){nSvg+='<line x1="'+(n.x+8)+'" y1="'+(n.y+37)+'" x2="'+(n.x+nw-8)+'" y2="'+(n.y+37)+'" stroke="#e2e8f0" stroke-width="0.5"/>';nSvg+='<text x="'+(n.x+nw/2)+'" y="'+(n.y+52)+'" text-anchor="middle" dominant-baseline="middle" font-size="8" fill="#64748b" font-family="Arial,sans-serif">'+md.slice(0,26)+'</text>';}
+      if(n.criticality&&{CR:'#dc2626',DE:'#ea580c',RD:'#d97706',SP:'#2563eb',AD:'#64748b'}[n.criticality]){var cc={CR:'#dc2626',DE:'#ea580c',RD:'#d97706',SP:'#2563eb',AD:'#64748b'}[n.criticality];nSvg+='<rect x="'+(n.x+nw-26)+'" y="'+(n.y+8)+'" width="22" height="13" rx="3" fill="'+cc+'22" stroke="'+cc+'" stroke-width="0.8"/><text x="'+(n.x+nw-15)+'" y="'+(n.y+15)+'" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="'+cc+'" font-weight="800">'+n.criticality+'</text>';}
+    });
+    var sysSvg='<svg xmlns="http://www.w3.org/2000/svg" width="'+sW+'" height="'+sH+'" style="background:#fff;"><defs><marker id="arr2" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#94a3b8"/></marker></defs>'+eSvg+nSvg+'</svg>';
+
+    var typeLabel2 = (LAYER_LABELS[cv.canvas_type]||cv.canvas_type.toUpperCase())+' — '+cv.name;
+    return '<div class="sheet"><div class="sheet-border"><div class="zone-bar"><span>D</span><span>C</span><span>B</span><span>A</span></div>'
+      +'<div class="sheet-content"><div class="sheet-title">'+typeLabel2+'</div><div style="overflow:auto;margin-top:8px;">'+sysSvg+'</div></div>'
+      +titleBlock(i+2, totalSheets)+'</div></div>';
+  }).join('');
+
+  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+platform.name+' — Platform Architecture Drawing</title>'
+    +'<style>'
+    +'*{box-sizing:border-box;margin:0;padding:0;}'
+    +'body{background:#e5e7eb;font-family:Arial,sans-serif;font-size:11px;color:#1e293b;}'
+    +'.sheet{width:17in;min-height:11in;background:#fff;margin:20px auto;position:relative;page-break-after:always;}'
+    +'@media print{.sheet{margin:0;page-break-after:always;width:100%;}body{background:#fff;}.no-print{display:none!important;}}'
+    +'.sheet-border{border:2px solid #000;margin:0.4in 0.38in 0.38in 0.75in;min-height:9.9in;display:flex;flex-direction:column;}'
+    +'.zone-bar{display:flex;justify-content:space-around;border-bottom:1px solid #000;padding:2px 0;font-size:9px;font-weight:700;color:#666;}'
+    +'.sheet-content{flex:1;padding:16px;overflow:hidden;}'
+    +'.sheet-title{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:12px;}'
+    +'.title-block{display:flex;border-top:2px solid #000;height:90px;}'
+    +'.tb-title{flex:2;border-right:1px solid #000;padding:4px 6px;display:flex;flex-direction:column;}'
+    +'.tb-right{flex:3;display:flex;flex-direction:column;}'
+    +'.tb-row{display:flex;flex:1;border-top:1px solid #000;}'
+    +'.tb-row:first-child{border-top:none;}'
+    +'.tb-cell{flex:1;border-right:1px solid #000;padding:2px 5px;display:flex;flex-direction:column;}'
+    +'.tb-cell:last-child{border-right:none;}'
+    +'.tb-label{font-size:7px;color:#666;text-transform:uppercase;}'
+    +'.tb-value{font-size:10px;font-weight:600;flex:1;display:flex;align-items:center;}'
+    +'table{width:100%;border-collapse:collapse;}'
+    +'th{background:#1e293b;color:#fff;padding:5px 8px;font-size:9px;text-transform:uppercase;text-align:left;}'
+    +'td{padding:5px 8px;border-bottom:1px solid #e2e8f0;font-size:10px;}'
+    +'.toolbar{background:#1e293b;color:#fff;padding:10px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:99;}'
+    +'.toolbar button{background:#38bdf8;color:#000;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:700;}'
+    +'</style></head><body>'
+    +'<div class="toolbar no-print"><strong>'+platform.name+' — Platform Architecture Drawing</strong>'
+    +'<button onclick="window.print()">🖨 Print / Save PDF</button>'
+    +'<span style="opacity:.5;font-size:10px;">Landscape · '+totalSheets+' sheets total</span></div>'
+
+    // Sheet 1: Platform Architecture
+    +'<div class="sheet"><div class="sheet-border"><div class="zone-bar"><span>D</span><span>C</span><span>B</span><span>A</span></div>'
+    +'<div class="sheet-content">'
+    +'<div class="sheet-title">SYSTEM ARCHITECTURE — '+platform.name+'</div>'
+    +'<div style="overflow:auto;margin-bottom:14px;">'+archSvg+'</div>'
+    +'<table><thead><tr><th>Sheet</th><th>System / Canvas</th><th>Layer</th><th>Rev</th></tr></thead><tbody>'
+    +'<tr><td>1</td><td>Platform Architecture Overview</td><td>ALL LAYERS</td><td>A</td></tr>'
+    +sheetIndexRows
+    +'</tbody></table>'
+    +'</div>'
+    +titleBlock(1, totalSheets)+'</div></div>'
+
+    // Per-system sheets
+    +systemSheets
+    +'</body></html>';
+
+  var win=window.open('','_blank');
+  if (win){ win.document.write(html); win.document.close(); }
+  else alert('Pop-up blocked — allow pop-ups to view the platform drawing.');
+}
+
+async function openMilStdDrawing(canvas, doc, revisions, canvasNodes) {
+  // Fetch supporting data in parallel
+  var [platform, settings, allAssets] = await Promise.all([
+    canvas.platform_id ? API.platforms.get(canvas.platform_id).catch(()=>null) : Promise.resolve(null),
+    API.settings.get().catch(()=>({})),
+    getAssets().catch(()=>[]),
+  ]);
+  var orgName  = settings.org_name  || 'Alto Technologies LLC';
+  var cageCode = settings.cage_code || '—';
+
+  // Physical canvas for elevation sheet
   var physCanvas = null;
   if (canvas.platform_id && canvas.canvas_type !== 'physical') {
     var allCanvases = await API.canvases.list({platform_id: canvas.platform_id}).catch(()=>[]);
@@ -8765,48 +9120,112 @@ async function openMilStdDrawing(canvas, doc, revisions, canvasNodes) {
     physical: 'INSTALLATION / FLOOR PLAN DRAWING',
     custom:   'SYSTEM FUNCTIONAL BLOCK DIAGRAM',
   };
+  var TYPE_ACCENT = {
+    network:'#1d4ed8', power:'#dc2626', rf:'#7c3aed',
+    hvac:'#0891b2', physical:'#15803d', custom:'#334155',
+  };
   var drawingTitle = TYPE_DRAWING_TITLES[canvas.canvas_type] || 'SYSTEM DRAWING';
-  var currentRev   = doc.current_rev || revisions[revisions.length-1]?.revision || 'A';
+  var accentColor  = TYPE_ACCENT[canvas.canvas_type] || '#334155';
+  var currentRev   = doc.current_rev || (revisions.length ? revisions[revisions.length-1].revision : 'A');
   var pubDate      = doc.updated_at ? doc.updated_at.slice(0,10) : new Date().toISOString().slice(0,10);
-  var sheetCount   = 4 + (physCanvas ? 1 : 0); // title + diagram + equip list + iface list [+ elevation]
   var platformName = platform ? platform.name : '—';
 
-  // Parse canvas data for nodes/edges
-  var cd = JSON.parse(canvas.canvas_data || '{"nodes":[],"edges":[]}');
-  var nodes = cd.nodes || [];
+  // ── Use enriched canvasNodes param; enrich any still-stale nodes ──
+  var assetById = {}; allAssets.forEach(function(a){ assetById[a.id]=a; });
+  var cd   = JSON.parse(canvas.canvas_data || '{"nodes":[],"edges":[]}');
+  var nodes = (canvasNodes && canvasNodes.length) ? canvasNodes : (cd.nodes || []);
   var edges = cd.edges || [];
 
-  // ── SVG re-render of canvas diagram ─────────────────────────────
-  var CRIT_C={'CR':'#c00','DE':'#c60','RD':'#cc0','SP':'#06c','AD':'#666'};
-  var NW=150, NH=60;
-  var allX=nodes.map(function(n){return n.x+NW;}); var allY=nodes.map(function(n){return n.y+NH;});
-  var svgW=Math.max(600, allX.length?Math.max.apply(null,allX)+60:600);
-  var svgH=Math.max(400, allY.length?Math.max.apply(null,allY)+60:400);
+  nodes.forEach(function(node) {
+    if (!node.asset_id) return;
+    var a = assetById[node.asset_id] || assetById[String(node.asset_id)];
+    if (!a) return;
+    if (!node.asset_name || node.asset_name === node.label || node.asset_name === node.asset_code)
+      node.asset_name = a.name || node.asset_name;
+    if (!node.manufacturer) node.manufacturer = a.manufacturer || '';
+    if (!node.model_number) node.model_number = a.model        || '';
+    if (!node.nsn)          node.nsn          = a.nsn          || a.part_number || '';
+    if (!node.cage_code)    node.cage_code    = a.cage_code    || '';
+    if (!node.criticality)  node.criticality  = a.criticality  || null;
+  });
+
+  var sheetCount = 4 + (physCanvas ? 1 : 0);
+
+  // ── SVG re-render (print-optimised, light background) ────────────
+  var CRIT_PRINT = {CR:'#dc2626',DE:'#ea580c',RD:'#d97706',SP:'#2563eb',AD:'#64748b'};
+  var CONN_PRINT = {
+    fiber:'#ea580c', ethernet:'#16a34a', coax:'#ca8a04',
+    serial_232:'#7c3aed', serial_485:'#a855f7',
+    power_ac:'#dc2626', power_dc:'#2563eb',
+    waveguide:'#0891b2', optical:'#db2777', can_bus:'#ea580c',
+  };
+  var CONN_DASH = {
+    fiber:'8,3', coax:'3,3', serial_232:'6,2', serial_485:'4,2',
+    waveguide:'2,4', optical:'5,2', can_bus:'3,2',
+  };
+
+  var NW=170, NH=70;
+  var allX=nodes.map(function(n){return n.x+(n.w||NW);}); var allY=nodes.map(function(n){return n.y+(n.h||NH);});
+  var svgW=Math.max(700, allX.length?Math.max.apply(null,allX)+80:700);
+  var svgH=Math.max(450, allY.length?Math.max.apply(null,allY)+80:450);
+
+  // Build per-connection-type markers
+  var markerDefs='<marker id="arr-default" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#64748b"/></marker>';
+  Object.keys(CONN_PRINT).forEach(function(k){
+    markerDefs+='<marker id="arr-'+k+'" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="'+CONN_PRINT[k]+'"/></marker>';
+  });
 
   var edgeSvg=''; var nodeSvg='';
+
+  // Edges first (under nodes)
   edges.forEach(function(e){
     var s=nodes.find(function(n){return n.id===e.from;}); var d2=nodes.find(function(n){return n.id===e.to;});
     if(!s||!d2) return;
-    var x1=s.x+NW/2,y1=s.y+NH/2,x2=d2.x+NW/2,y2=d2.y+NH/2;
-    edgeSvg+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="#334155" stroke-width="1.5" marker-end="url(#arr)"/>';
-    if(e.label) edgeSvg+='<text x="'+((x1+x2)/2)+'" y="'+(((y1+y2)/2)-5)+'" text-anchor="middle" font-size="8" fill="#64748b">'+e.label+'</text>';
-  });
-  nodes.forEach(function(n){
-    var nw=n.w||NW, nh=n.h||NH;
-    var bg=n.type==='network'?'#1e3a5f':n.type==='software'?'#1a3020':n.type==='firmware'?'#3a2800':'#1e2540';
-    nodeSvg+='<rect x="'+n.x+'" y="'+n.y+'" width="'+nw+'" height="'+nh+'" rx="4" fill="'+bg+'" stroke="#2e3650" stroke-width="1"/>';
-    nodeSvg+='<line x1="'+(n.x+1)+'" y1="'+(n.y+20)+'" x2="'+(n.x+nw-1)+'" y2="'+(n.y+20)+'" stroke="#1e2540" stroke-width="1"/>';
-    var code=n.asset_code||n.label||'';
-    nodeSvg+='<text x="'+(n.x+nw/2)+'" y="'+(n.y+12)+'" text-anchor="middle" dominant-baseline="middle" font-size="8" font-family="monospace" fill="#1d6fa8">'+code+'</text>';
-    var name=(n.asset_name||n.label||'');
-    nodeSvg+='<text x="'+(n.x+nw/2)+'" y="'+(n.y+38)+'" text-anchor="middle" dominant-baseline="middle" font-size="10" fill="#333">'+name.slice(0,20)+'</text>';
-    if(n.criticality&&CRIT_C[n.criticality]){
-      nodeSvg+='<circle cx="'+(n.x+8)+'" cy="'+(n.y+8)+'" r="5" fill="'+CRIT_C[n.criticality]+'"/>';
-      nodeSvg+='<text x="'+(n.x+8)+'" y="'+(n.y+8)+'" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="#fff" font-weight="800">'+n.criticality+'</text>';
+    var sw=s.w||NW, sh=s.h||NH, dw=d2.w||NW, dh=d2.h||NH;
+    var x1=s.x+sw/2, y1=s.y+sh/2, x2=d2.x+dw/2, y2=d2.y+dh/2;
+    var col  = e.conn_type ? (CONN_PRINT[e.conn_type]||'#64748b') : '#94a3b8';
+    var dash = e.conn_type ? (CONN_DASH[e.conn_type]||'')         : '';
+    var mark = e.conn_type && CONN_PRINT[e.conn_type] ? 'url(#arr-'+e.conn_type+')' : 'url(#arr-default)';
+    edgeSvg+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2
+      +'" stroke="'+col+'" stroke-width="1.5"'+(dash?' stroke-dasharray="'+dash+'"':'')+' marker-end="'+mark+'"/>';
+    var mx=(x1+x2)/2, my=(y1+y2)/2;
+    var lparts=[e.conn_type?e.conn_type.replace('_',' ').toUpperCase():'', e.label||''].filter(Boolean).join(' · ');
+    if(lparts){
+      var tw=lparts.length*5+8;
+      edgeSvg+='<rect x="'+(mx-tw/2)+'" y="'+(my-8)+'" width="'+tw+'" height="12" fill="#fff" rx="2"/>';
+      edgeSvg+='<text x="'+mx+'" y="'+my+'" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="'+col+'" font-weight="700">'+lparts+'</text>';
     }
   });
-  var diagramSvg='<svg xmlns="http://www.w3.org/2000/svg" width="'+svgW+'" height="'+svgH+'" style="background:#fff;">'
-    +'<defs><marker id="arr" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#666"/></marker></defs>'
+
+  // Nodes
+  var TYPE_BORDER = {network:'#1d4ed8',power:'#dc2626',rf:'#7c3aed',hvac:'#0891b2',physical:'#15803d',software:'#15803d',firmware:'#92400e',hardware:'#334155',custom:'#334155'};
+  nodes.forEach(function(n){
+    var nw=n.w||NW, nh=n.h||NH;
+    var borderCol = TYPE_BORDER[n.type]||'#334155';
+    var name  = n.asset_name || n.label || '—';
+    var model = [n.manufacturer, n.model_number].filter(Boolean).join(' · ');
+
+    // Node box — white fill, colored border + top strip
+    nodeSvg+='<rect x="'+n.x+'" y="'+n.y+'" width="'+nw+'" height="'+nh+'" rx="4" fill="#fff" stroke="'+borderCol+'" stroke-width="1.5"/>';
+    // Color strip top
+    nodeSvg+='<rect x="'+n.x+'" y="'+n.y+'" width="'+nw+'" height="5" rx="2" fill="'+borderCol+'"/>';
+    // Name (line 1)
+    nodeSvg+='<text x="'+(n.x+nw/2)+'" y="'+(n.y+25)+'" text-anchor="middle" dominant-baseline="middle" font-size="11" font-weight="700" fill="#1e293b" font-family="Arial,sans-serif">'+name.slice(0,22)+'</text>';
+    // Divider
+    if(model){
+      nodeSvg+='<line x1="'+(n.x+8)+'" y1="'+(n.y+37)+'" x2="'+(n.x+nw-8)+'" y2="'+(n.y+37)+'" stroke="#e2e8f0" stroke-width="0.5"/>';
+      nodeSvg+='<text x="'+(n.x+nw/2)+'" y="'+(n.y+52)+'" text-anchor="middle" dominant-baseline="middle" font-size="8" fill="#64748b" font-family="Arial,sans-serif">'+model.slice(0,26)+'</text>';
+    }
+    // Criticality badge top-right
+    if(n.criticality && CRIT_PRINT[n.criticality]){
+      var cc=CRIT_PRINT[n.criticality];
+      nodeSvg+='<rect x="'+(n.x+nw-26)+'" y="'+(n.y+8)+'" width="22" height="13" rx="3" fill="'+cc+'22" stroke="'+cc+'" stroke-width="0.8"/>';
+      nodeSvg+='<text x="'+(n.x+nw-15)+'" y="'+(n.y+15)+'" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="'+cc+'" font-weight="800" font-family="Arial,sans-serif">'+n.criticality+'</text>';
+    }
+  });
+
+  var diagramSvg='<svg xmlns="http://www.w3.org/2000/svg" width="'+svgW+'" height="'+svgH+'" style="background:#fff;border:1px solid #e2e8f0;">'
+    +'<defs>'+markerDefs+'</defs>'
     +edgeSvg+nodeSvg+'</svg>';
 
   // ── Parts list table rows ──────────────────────────────────────
