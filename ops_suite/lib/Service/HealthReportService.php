@@ -241,7 +241,6 @@ class HealthReportService {
            ->innerJoin('d', 'ops_assets', 'a', 'a.id = d.asset_id')
            ->where($qb->expr()->eq('d.status', $qb->createNamedParameter('closed')))
            ->andWhere($qb->expr()->isNotNull('d.closed_at'))
-           ->andWhere($qb->expr()->neq('d.closed_at', $qb->createNamedParameter('')))
            ->andWhere($qb->expr()->isNotNull('d.created_at'))
            ->orderBy('d.asset_id', 'ASC')
            ->addOrderBy('d.created_at', 'ASC');
@@ -258,6 +257,9 @@ class HealthReportService {
         // Group by asset
         $byAsset = [];
         foreach ($rows as $row) {
+            // Skip rows where dates are empty strings (can happen with legacy data)
+            if (empty($row['created_at']) || empty($row['closed_at'])) continue;
+
             $aid = (int)$row['asset_id'];
             if (!isset($byAsset[$aid])) {
                 $byAsset[$aid] = [

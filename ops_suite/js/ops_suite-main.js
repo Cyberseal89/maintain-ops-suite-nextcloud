@@ -1,5 +1,5 @@
 /**
- * OpsSuite v3.19.2
+ * OpsSuite v3.19.4
  * Sprint 0A/0B: shops, asset coding (TYPE-SHOP-POSITION), criticality,
  * readiness engine, local_uuid offline sync foundation.
  */
@@ -7654,6 +7654,7 @@ async function viewCanvases() {
     if (activeTab === 'canvases') {
       hdrBtn.appendChild(btn('primary','+ New Canvas',()=>showCanvasForm(null,renderCanvasTab)));
       if (_selectedPlatformIds.length) {
+        hdrBtn.appendChild(btn('','⚡ Auto-Generate Canvas', function(){ showAutoGenerateCanvasModal(_selectedPlatformIds[0], renderCanvasTab); }));
         hdrBtn.appendChild(btn('','🗺 Platform Drawing', function(){ openPlatformDrawing(_selectedPlatformIds[0]); }));
       }
 
@@ -8907,6 +8908,244 @@ function openFmeaReport(ws, entries) {
   var win=window.open('','_blank');
   if (win){ win.document.write(html); win.document.close(); }
   else alert('Pop-up blocked — allow pop-ups to view the FMEA report.');
+}
+
+// ── Auto-Generate Canvas from Asset Hierarchy ─────────────────────────────
+//
+// Builds canvas nodes/edges from the platform asset registry, structured by
+// parent_id relationships. Tree layout uses recursive subtree-width centering
+// (simplified Reingold-Tilford) — roots across the top, children below.
+//
+// Asset code prefix → canvas type mapping:
+//   PWR / ELEC / UPS / GEN → power
+//   NET / ETH / FBR / SW / RT → network
+//   RF / ANT / RAD / WVG    → rf
+//   HVAC / AIR / COOL / THM → hvac
+//   PHYS / RACK / CAB / MNT → physical
+//   (everything else)        → custom
+
+function autoCanvasTypeFromCode(assetCode, assetType) {
+  var code = (assetCode || '').toUpperCase();
+  var prefixes = {
+    power:    ['PWR','ELEC','UPS','GEN','PDU','BATT','INV','XFMR','DIST'],
+    network:  ['NET','ETH','FBR','SWT','RTR','HUB','NIC','LAN','WAN','VPN','VLAN'],
+    rf:       ['RF','ANT','RAD','WVG','SAT','REC','XMT','RCVR','XMTR','AMP'],
+    hvac:     ['HVAC','AIR','COOL','HTR','THM','DUCT','CHIL','FAN','AHU'],
+    physical: ['PHYS','RACK','CAB','MNT','ENC','FLOR','WALL','SHLF'],
+  };
+  for (var type in prefixes) {
+    if (prefixes[type].some(function(p){ return code.startsWith(p+'-') || code.startsWith(p); })) return type;
+  }
+  // Fall back on Nextcloud asset_type field
+  if (assetType === 'hardware') return 'power';
+  return 'custom';
+}
+
+// Recursive subtree width calculator
+function calcSubtreeWidths(nodeId, childrenMap, NW, GAP_X) {
+  var children = childrenMap[nodeId] || [];
+  if (!children.length) return NW;
+  var totalChildren = children.reduce(function(sum, cid) {
+    return sum + calcSubtreeWidths(cid, childrenMap, NW, GAP_X) + GAP_X;
+  }, -GAP_X);
+  return Math.max(NW, totalChildren);
+}
+
+// Assign x/y to each node in the tree
+function assignTreePositions(nodeId, x, y, childrenMap, positions, NW, NH, GAP_X, GAP_Y) {
+  positions[nodeId] = { x: x, y: y };
+  var children = childrenMap[nodeId] || [];
+  if (!children.length) return;
+  // Total width needed for all children
+  var totalW = children.reduce(function(sum, cid) {
+    return sum + calcSubtreeWidths(cid, childrenMap, NW, GAP_X) + GAP_X;
+  }, -GAP_X);
+  var cx = x + (NW / 2) - (totalW / 2);
+  children.forEach(function(cid) {
+    var sw = calcSubtreeWidths(cid, childrenMap, NW, GAP_X);
+    assignTreePositions(cid, cx, y + NH + GAP_Y, childrenMap, positions, NW, NH, GAP_X, GAP_Y);
+    cx += sw + GAP_X;
+  });
+}
+
+async function showAutoGenerateCanvasModal(platformId, onDone) {
+  var [platform, allAssets] = await Promise.all([
+    API.platforms.get(platformId).catch(()=>null),
+    API.assets.list ? API.assets.list({platform_id: platformId}).catch(()=>[]) : getAssets().catch(()=>[]),
+  ]);
+  // Filter to this platform
+  var assets = allAssets.filter(function(a){ return a.platform_id == platformId || !platformId; });
+  if (!assets.length) { alert('No assets found for this platform. Add assets first.'); return; }
+
+  // Detect canvas types present in this asset set
+  var typeGroups = {};
+  assets.forEach(function(a){
+    var t = autoCanvasTypeFromCode(a.asset_code || a.asset_id_label, a.asset_type);
+    if (!typeGroups[t]) typeGroups[t] = [];
+    typeGroups[t].push(a);
+  });
+
+  var TYPE_LABELS = {power:'Power Distribution',network:'Network / Data',rf:'RF / Signal',hvac:'HVAC / Mechanical',physical:'Physical Installation',custom:'Functional / Custom'};
+  var CANVAS_TYPE_OPTS = Object.keys(typeGroups).map(function(t){
+    return [t, TYPE_LABELS[t]||t, typeGroups[t].length+' assets'];
+  });
+  // Add "All types on one canvas" option
+  CANVAS_TYPE_OPTS.unshift(['__all__','All Types — Single Canvas', assets.length+' assets total']);
+
+  var body = div('');
+  body.appendChild(el('p',{text:'Choose which asset layer to generate a canvas for. Assets are grouped by asset code prefix. The hierarchy from parent→child relationships becomes the canvas node layout.',style:'color:#94a3b8;font-size:12px;margin-bottom:16px;'}));
+
+  // Type selector cards
+  var typeVar = CANVAS_TYPE_OPTS[0][0];
+  var typeCards = div(''); typeCards.style.cssText='display:flex;flex-direction:column;gap:8px;margin-bottom:16px;';
+  CANVAS_TYPE_OPTS.forEach(function(opt){
+    var card = div(''); card.style.cssText='padding:10px 14px;border:1px solid #334155;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:all .15s;';
+    card.dataset.val = opt[0];
+    var left = div('');
+    left.appendChild(el('div',{text:opt[1],style:'font-weight:700;color:#e2e8f0;font-size:13px;'}));
+    if (opt[2]) left.appendChild(el('div',{text:opt[2],style:'font-size:11px;color:#64748b;margin-top:2px;'}));
+    card.appendChild(left);
+    var check = el('div',{text:'○',style:'color:#334155;font-size:16px;'});
+    card.appendChild(check);
+    card.onclick = function(){
+      typeVar = opt[0];
+      typeCards.querySelectorAll('[data-val]').forEach(function(c){
+        c.style.borderColor='#334155'; c.style.background='';
+        c.querySelector('div:last-child').textContent='○'; c.querySelector('div:last-child').style.color='#334155';
+      });
+      card.style.borderColor='#38bdf8'; card.style.background='#0f2744';
+      check.textContent='●'; check.style.color='#38bdf8';
+    };
+    typeCards.appendChild(card);
+    if (opt[0]===CANVAS_TYPE_OPTS[0][0]) card.onclick(); // select first by default
+  });
+  body.appendChild(typeCards);
+
+  // Canvas name input
+  var nameInput = document.createElement('input'); nameInput.type='text';
+  nameInput.style.cssText='width:100%;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:8px;font-size:12px;margin-bottom:12px;';
+  nameInput.placeholder = (platform?platform.name+' — ':'')+'Auto-Generated Canvas';
+  body.appendChild(el('label',{text:'Canvas Name',style:'display:block;font-size:11px;color:#94a3b8;margin-bottom:4px;font-weight:600;text-transform:uppercase;'}));
+  body.appendChild(nameInput);
+
+  // Include edges toggle
+  var edgesLabel = div(''); edgesLabel.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:4px;';
+  var edgesChk = document.createElement('input'); edgesChk.type='checkbox'; edgesChk.checked=true;
+  edgesLabel.appendChild(edgesChk);
+  edgesLabel.appendChild(el('span',{text:'Generate edges from parent → child relationships',style:'font-size:12px;color:#e2e8f0;'}));
+  body.appendChild(edgesLabel);
+  body.appendChild(el('p',{text:'Edge connection type is inferred from asset code prefix.',style:'font-size:11px;color:#475569;margin-bottom:16px;'}));
+
+  showModal('Auto-Generate Canvas — '+(platform?platform.name:'Platform'), body, [
+    { label: 'Generate Canvas', cls: 'primary', action: async function(close) {
+        var selectedType = typeVar;
+        var canvasName   = nameInput.value.trim() || nameInput.placeholder;
+        var includeEdges = edgesChk.checked;
+
+        // Filter assets to selected type
+        var subset = selectedType === '__all__' ? assets : (typeGroups[selectedType] || []);
+        if (!subset.length) { alert('No assets for this type.'); return; }
+
+        // Build parent→children map (only within subset)
+        var subsetIds = new Set(subset.map(function(a){ return a.id; }));
+        var childrenMap = {};
+        var roots = [];
+        subset.forEach(function(a){
+          var pid = a.parent_id;
+          if (pid && subsetIds.has(pid)) {
+            if (!childrenMap[pid]) childrenMap[pid] = [];
+            childrenMap[pid].push(a.id);
+          } else {
+            roots.push(a.id);
+          }
+        });
+        var assetById = {};
+        subset.forEach(function(a){ assetById[a.id]=a; });
+
+        // Node dimensions
+        var NW=170, NH=70, GAP_X=40, GAP_Y=80;
+
+        // Lay out roots side-by-side across the top
+        var positions = {};
+        var rootX = 40;
+        roots.forEach(function(rid){
+          var sw = calcSubtreeWidths(rid, childrenMap, NW, GAP_X);
+          assignTreePositions(rid, rootX, 40, childrenMap, positions, NW, NH, GAP_X, GAP_Y);
+          rootX += sw + GAP_X + 20;
+        });
+
+        // Build node objects
+        var nodes = subset.map(function(a){
+          var pos = positions[a.id] || {x:40, y:40};
+          // Infer connection type for edges from code prefix
+          var ct = autoCanvasTypeFromCode(a.asset_code||a.asset_id_label, a.asset_type);
+          var connTypeMap = {power:'power_dc',network:'ethernet',rf:'coax',hvac:'other',physical:'other',custom:'other'};
+          return {
+            id:            'n-'+a.id,
+            asset_id:      a.id,
+            asset_code:    a.asset_code || a.asset_id_label || '',
+            asset_name:    a.name || '',
+            manufacturer:  a.manufacturer || '',
+            model_number:  a.model || '',
+            nsn:           a.nsn || a.part_number || '',
+            cage_code:     a.cage_code || '',
+            criticality:   a.criticality_code || null,
+            type:          a.asset_type || 'hardware',
+            label:         a.name || a.asset_code || 'Asset',
+            x:             pos.x,
+            y:             pos.y,
+            w:             NW,
+            h:             NH,
+            _conn_type:    connTypeMap[ct] || 'other',
+          };
+        });
+
+        // Build edges from parent→child
+        var edges = [];
+        if (includeEdges) {
+          subset.forEach(function(a){
+            var pid = a.parent_id;
+            if (pid && subsetIds.has(pid)) {
+              var parentNode = nodes.find(function(n){ return n.asset_id===pid; });
+              var childNode  = nodes.find(function(n){ return n.asset_id===a.id; });
+              if (parentNode && childNode) {
+                edges.push({
+                  id:        'e-'+pid+'-'+a.id,
+                  from:      parentNode.id,
+                  to:        childNode.id,
+                  conn_type: childNode._conn_type,
+                  label:     '',
+                });
+              }
+            }
+          });
+        }
+
+        // Strip internal _conn_type from nodes
+        nodes.forEach(function(n){ delete n._conn_type; });
+
+        // Determine canvas type
+        var cType = selectedType === '__all__' ? 'custom' : selectedType;
+
+        var canvasData = {
+          name:         canvasName,
+          canvas_type:  cType,
+          platform_id:  platformId || null,
+          canvas_data:  JSON.stringify({nodes: nodes, edges: edges}),
+          description:  'Auto-generated from asset hierarchy ('+(new Date().toISOString().slice(0,10))+'). '+nodes.length+' nodes, '+edges.length+' edges.',
+        };
+
+        var created = await API.canvases.create(canvasData).catch(function(e){
+          alert('Error creating canvas: '+e.message); return null;
+        });
+        close();
+        if (created) {
+          onDone && onDone();
+          navigate('canvas-detail', created.id);
+        }
+    }},
+    { label: 'Cancel', cls: '', action: function(close){ close(); }},
+  ]);
 }
 
 function showCanvasForm(existing, onSave) {
