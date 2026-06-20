@@ -19,6 +19,7 @@ class ModernizationMapper extends QBMapper {
         return $this->findEntity($qb);
     }
 
+    /** @return Modernization[] */
     public function findAll(?string $status = null, ?int $platformId = null, ?string $assignedTo = null): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')->from($this->getTableName());
@@ -33,8 +34,35 @@ class ModernizationMapper extends QBMapper {
         if (empty($platformIds)) return $this->findAll();
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')->from($this->getTableName())
-           ->where($qb->expr()->in('platform_id', $qb->createNamedParameter($platformIds, IQueryBuilder::PARAM_INT_ARRAY)))
+           ->where($qb->expr()->orX(
+               $qb->expr()->in('platform_id', $qb->createNamedParameter($platformIds, IQueryBuilder::PARAM_INT_ARRAY)),
+               $qb->expr()->isNull('platform_id')
+           ))
            ->orderBy('updated_at', 'DESC');
         return $this->findEntities($qb);
+    }
+
+    public function countByStage(array $platformIds = []): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('status', $qb->createFunction('COUNT(*) AS cnt'))
+           ->from($this->getTableName())
+           ->groupBy('status');
+        if (!empty($platformIds)) {
+            $qb->andWhere($qb->expr()->in('platform_id', $qb->createNamedParameter($platformIds, IQueryBuilder::PARAM_INT_ARRAY)));
+        }
+        $r = $qb->executeQuery(); $rows = $r->fetchAll(); $r->closeCursor();
+        $out = [];
+        foreach ($rows as $row) { $out[$row['status']] = (int)$row['cnt']; }
+        return $out;
+    }
+
+    public function nextSequence(?int $shopId): int {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select($qb->createFunction('COUNT(*) AS cnt'))->from($this->getTableName());
+        if ($shopId) {
+            $qb->where($qb->expr()->eq('shop_id', $qb->createNamedParameter($shopId, IQueryBuilder::PARAM_INT)));
+        }
+        $r = $qb->executeQuery(); $row = $r->fetch(); $r->closeCursor();
+        return (int)($row['cnt'] ?? 0) + 1;
     }
 }

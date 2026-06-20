@@ -13,7 +13,9 @@ use OCP\IRequest;
 use OCP\IUserSession;
 
 class FilesController extends Controller {
-    public const SOP_FOLDER = 'PMS Procedures';
+    public const SOP_FOLDER  = 'PMS Procedures';
+    public const APP_FOLDER  = 'Maintain Ops Suite';
+    public const APP_SUBFOLDERS = ['Photos', 'Documents', 'Models', 'Imports', 'LOTO'];
 
     public function __construct(
         string               $appName,
@@ -55,23 +57,32 @@ class FilesController extends Controller {
 
     /**
      * @NoAdminRequired
-     * Lists files in a given path (defaults to PMS Procedures).
+     * Lists files in a given path. Empty path returns user root listing.
      */
     public function listFolder(): DataResponse {
         $uid  = $this->userSession->getUser()?->getUID();
-        $path = $this->request->getParam('path', self::SOP_FOLDER);
+        $path = $this->request->getParam('path', '');
 
         if (!$uid) {
             return new DataResponse(['error' => 'Not authenticated'], Http::STATUS_UNAUTHORIZED);
         }
 
-        // Strip leading slash
-        $path = ltrim($path, '/');
+        // Strip leading/trailing slashes
+        $path = trim($path, '/');
 
         try {
             $userFolder = $this->rootFolder->getUserFolder($uid);
+
+            // Empty path → list user root
+            if ($path === '') {
+                return new DataResponse([
+                    'path'  => '/',
+                    'files' => $this->listFiles($userFolder),
+                ]);
+            }
+
             if (!$userFolder->nodeExists($path)) {
-                return new DataResponse(['error' => 'Path not found'], Http::STATUS_NOT_FOUND);
+                return new DataResponse(['error' => 'Path not found: ' . $path], Http::STATUS_NOT_FOUND);
             }
             $folder = $userFolder->get($path);
             if ($folder->getType() !== FileInfo::TYPE_FOLDER) {
@@ -80,6 +91,53 @@ class FilesController extends Controller {
             return new DataResponse([
                 'path'  => '/' . $path,
                 'files' => $this->listFiles($folder),
+            ]);
+        } catch (\Exception $e) {
+            return new DataResponse(['error' => $e->getMessage()], Http::STATUS_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * @NoAdminRequired
+     * POST /api/files/ensure-folders — creates the standard Maintain Ops Suite folder structure.
+     */
+    public function ensureFolders(): DataResponse {
+        $uid = $this->userSession->getUser()?->getUID();
+        if (!$uid) {
+            return new DataResponse(['error' => 'Not authenticated'], Http::STATUS_UNAUTHORIZED);
+        }
+        try {
+            $userFolder = $this->rootFolder->getUserFolder($uid);
+            $created    = [];
+
+            // Ensure SOP folder
+            if (!$userFolder->nodeExists(self::SOP_FOLDER)) {
+                $userFolder->newFolder(self::SOP_FOLDER);
+                $created[] = self::SOP_FOLDER;
+            }
+
+            // Ensure app root
+            if (!$userFolder->nodeExists(self::APP_FOLDER)) {
+                $userFolder->newFolder(self::APP_FOLDER);
+                $created[] = self::APP_FOLDER;
+            }
+            $appFolder = $userFolder->get(self::APP_FOLDER);
+
+            // Ensure subfolders
+            foreach (self::APP_SUBFOLDERS as $sub) {
+                if (!$appFolder->nodeExists($sub)) {
+                    $appFolder->newFolder($sub);
+                    $created[] = self::APP_FOLDER . '/' . $sub;
+                }
+            }
+
+            return new DataResponse([
+                'created' => $created,
+                'app_folder' => self::APP_FOLDER,
+                'structure' => [
+                    self::APP_FOLDER => self::APP_SUBFOLDERS,
+                    self::SOP_FOLDER => [],
+                ],
             ]);
         } catch (\Exception $e) {
             return new DataResponse(['error' => $e->getMessage()], Http::STATUS_INTERNAL_SERVER_ERROR);

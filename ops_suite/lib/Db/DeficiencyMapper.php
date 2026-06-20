@@ -115,6 +115,17 @@ class DeficiencyMapper extends QBMapper {
         return (int)($row['cnt'] ?? 0);
     }
 
+    /** @return Deficiency[] all open deficiencies for a specific asset (used by ReadinessService) */
+    public function findOpenByAsset(int $assetId): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')->from($this->getTableName())
+           ->where($qb->expr()->eq('asset_id', $qb->createNamedParameter($assetId, IQueryBuilder::PARAM_INT)))
+           ->andWhere($qb->expr()->notIn('status',
+               $qb->createNamedParameter(['closed', 'cancelled'], IQueryBuilder::PARAM_STR_ARRAY)))
+           ->orderBy('severity', 'ASC');
+        return $this->findEntities($qb);
+    }
+
     public function findOpenAssignedTo(string $user, int $limit = 10): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')->from($this->getTableName())

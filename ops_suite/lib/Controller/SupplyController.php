@@ -113,7 +113,9 @@ class SupplyController extends Controller {
         if (array_key_exists('needed_by', $data))    $req->setNeededBy($data['needed_by'] ?: null);
         if (array_key_exists('requested_by', $data)) $req->setRequestedBy($data['requested_by']);
         if (array_key_exists('notes', $data))        $req->setNotes($data['notes']);
-        if (array_key_exists('platform_id', $data))  $req->setPlatformId($data['platform_id'] ? (int)$data['platform_id'] : null);
+        if (array_key_exists('platform_id', $data))     $req->setPlatformId($data['platform_id'] ? (int)$data['platform_id'] : null);
+        if (array_key_exists('budget_status', $data))    $req->setBudgetStatus($data['budget_status'] ?: 'unbudgeted');
+        if (array_key_exists('budget_fiscal_year', $data)) $req->setBudgetFiscalYear($data['budget_fiscal_year'] ? (int)$data['budget_fiscal_year'] : null);
 
         // Auto-set approved_by when status moves to approved
         $uid = $this->userSession->getUser()?->getUID() ?? '';

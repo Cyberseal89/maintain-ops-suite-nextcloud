@@ -33,6 +33,11 @@ class Deficiency extends Entity implements \JsonSerializable {
     protected ?int     $platformId         = null;
     protected ?int     $modernizationId             = null;
     protected int      $deferredFromModernization   = 0;
+    protected ?int     $failureModeId               = null;
+    protected ?string  $failureMode                 = null;
+    protected string   $budgetStatus                = 'unbudgeted';
+    protected ?int     $budgetFiscalYear             = null;
+    protected ?string $localUuid              = null;
     protected string  $createdBy              = '';
     protected string  $createdAt              = '';
     protected string  $updatedAt              = '';
@@ -71,6 +76,14 @@ class Deficiency extends Entity implements \JsonSerializable {
     public function setTargetCompletion(?string $v): void { $this->targetCompletion = $v; $this->markFieldUpdated('targetCompletion'); }
     public function getLinkedProcedureId(): int       { return $this->linkedProcedureId; }
     public function setLinkedProcedureId(int $v): void{ $this->linkedProcedureId = $v; $this->markFieldUpdated('linkedProcedureId'); }
+    public function getFailureMode(): ?string           { return $this->failureMode; }
+    public function setFailureMode(?string $v): void    { $this->failureMode = $v; $this->markFieldUpdated('failureMode'); }
+    public function getBudgetStatus(): string           { return $this->budgetStatus; }
+    public function setBudgetStatus(string $v): void    { $this->budgetStatus = $v; $this->markFieldUpdated('budgetStatus'); }
+    public function getBudgetFiscalYear(): ?int         { return $this->budgetFiscalYear; }
+    public function setBudgetFiscalYear(?int $v): void  { $this->budgetFiscalYear = $v; $this->markFieldUpdated('budgetFiscalYear'); }
+    public function getLocalUuid(): ?string             { return $this->localUuid; }
+    public function setLocalUuid(?string $v): void    { $this->localUuid = $v; $this->markFieldUpdated('localUuid'); }
     public function getCreatedBy(): string            { return $this->createdBy; }
     public function setCreatedBy(string $v): void     { $this->createdBy = $v; $this->markFieldUpdated('createdBy'); }
     public function getCreatedAt(): string            { return $this->createdAt; }
@@ -111,7 +124,12 @@ class Deficiency extends Entity implements \JsonSerializable {
             'closed_at'           => $this->closedAt,
             'platform_id'         => $this->platformId,
             'modernization_id'           => $this->modernizationId,
+            'failure_mode_id'            => $this->failureModeId,
+            'failure_mode'               => $this->failureMode,
+            'budget_status'              => $this->budgetStatus,
+            'budget_fiscal_year'         => $this->budgetFiscalYear,
             'deferred_from_modernization' => $this->deferredFromModernization,
+            'local_uuid'              => $this->localUuid,
             'created_by'              => $this->createdBy,
             'created_at'              => $this->createdAt,
             'updated_at'              => $this->updatedAt,

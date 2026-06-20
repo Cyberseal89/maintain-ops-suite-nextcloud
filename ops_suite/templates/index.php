@@ -10,6 +10,9 @@
             <span class="ops-logo-mark">Ops Suite</span>
             <span class="ops-logo-sub">Configuration · PM · Deficiencies</span>
         </div>
+        <div style="padding:8px 12px 4px 12px;">
+            <span id="ops-role-badge" class="ops-badge badge-gray" style="font-size:11px;">Loading…</span>
+        </div>
     </div>
     <div id="ops-main">
         <div id="ops-content"></div>

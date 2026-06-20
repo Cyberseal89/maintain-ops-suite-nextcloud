@@ -1,5 +1,5 @@
 # Maintain Ops Suite — User Manual
-**Version 2.0.3 | Alto Technologies LLC**
+**Version 3.2.2 | Alto Technologies LLC**
 
 ---
 
@@ -7,459 +7,545 @@
 1. [Overview](#overview)
 2. [Getting Started](#getting-started)
 3. [Dashboard](#dashboard)
-4. [Configuration Registry (Assets)](#configuration-registry)
+4. [Asset Registry (Library)](#asset-registry)
 5. [Preventive Maintenance](#preventive-maintenance)
 6. [Deficiency Tracking](#deficiency-tracking)
-7. [Modernizations](#modernizations)
-8. [Availability Projects](#availability-projects)
-9. [Work Packages](#work-packages)
-10. [Supply & Warehouse](#supply-warehouse)
-11. [Validations Due](#validations-due)
-12. [Platforms](#platforms)
-13. [Settings](#settings)
-14. [Mobile App (Field Technician)](#mobile-app)
-15. [Appendix](#appendix)
+7. [LOTO / Tagout](#loto--tagout)
+8. [Modernizations](#modernizations)
+9. [Availability Projects & Gantt](#availability-projects--gantt)
+10. [Work Packages & RFQ](#work-packages--rfq)
+11. [Supply & Warehouse](#supply--warehouse)
+12. [The Library (Documents)](#the-library)
+13. [System Canvas](#system-canvas)
+14. [Failure Modes](#failure-modes)
+15. [Data Import](#data-import)
+16. [Platforms & Shops (Admin)](#platforms--shops)
+17. [Settings](#settings)
+18. [Mobile App (Field Technician)](#mobile-app)
+19. [Appendix](#appendix)
 
 ---
 
 ## 1. Overview
 
-Maintain Ops Suite is an integrated operations management platform built on Nextcloud. It provides seven core modules:
+Maintain Ops Suite is an integrated operations management platform built on Nextcloud. It provides the following core modules:
 
-- **Configuration Registry** — Track all hardware, software, and firmware assets with IUID compliance
-- **Preventive Maintenance (PM)** — Schedule, track, and complete PM procedures
-- **Deficiency Tracking** — Log, manage, and close deficiencies found in the field
-- **Modernizations** — Manage asset upgrade projects with full TDP package tracking
-- **Availability Projects** — Project manage multiple work items with Gantt scheduling
+- **Asset Registry** — Hardware, software, and firmware digital twin with hierarchy, criticality, bypass/redundancy config, photos, and 3D models
+- **Preventive Maintenance (PM)** — Schedule, track, and complete PM procedures with SOP attachment
+- **Deficiency Tracking** — Log, manage, troubleshoot, and close deficiencies (SEV-1 through SEV-5)
+- **LOTO / Tagout** — Lockout/tagout session management with device inventory, verify workflow, and audit print
+- **Modernizations** — Asset upgrade projects with 5-stage lifecycle and Technical Data Package (TDP) management
+- **Availability Projects** — Project manage multiple work items with a visual Gantt chart
 - **Work Packages** — Bundle PMs and modernizations into RFQ-ready packages
 - **Supply & Warehouse** — Supply requisitions, inventory management, and cycle counting
+- **The Library** — Document registry with revision tracking and SOP management
+- **System Canvas** — Draw live system architecture diagrams linked to real asset records
+- **Failure Modes** — S5000F-based failure mode taxonomy, customizable per installation
+- **Data Import** — Bulk-load asset records from CSV or JSON files
 
 The platform has two interfaces:
 - **Nextcloud Web UI** — For managers, planners, and administrators
-- **Android Mobile App** — For field technicians in the field
+- **Android Mobile App** *(Pending release)* — For field technicians
 
 ---
 
 ## 2. Getting Started
 
 ### Accessing the Web UI
-1. Log in to your Nextcloud instance
-2. Click **Maintain Ops Suite** in the top navigation bar
-3. You will land on the Dashboard
+1. Log in to your Nextcloud instance.
+2. Click **Maintain Ops Suite** in the top navigation bar.
+3. You will land on the Dashboard.
 
 ### First-Time Setup (Admin)
-1. **Create Platforms** — Go to Admin → Platforms → + New Platform
-2. **Set Editor Group** — Go to Settings → Access Control
-3. **Register Assets** — Go to Configuration Registry → Register New Asset
+Before any operational data can be created, an administrator must complete setup:
 
-### Mobile App Setup
-1. Install the Maintain Ops Suite app on your Android device
-2. Enter your Nextcloud server URL (e.g. `https://cloud.example.com`)
-3. Log in and grant access when prompted
-4. Complete the onboarding slides
+1. **Create a Platform** — Go to *Admin → Platforms & Shops*. Create at least one Platform and link it to a Nextcloud group. Users in that group will see the platform's data.
+2. **Create Shops** — Add shop codes under the platform. Shop codes become the prefix for all asset identifiers (e.g., `SHB` → `SHB-0001`).
+3. **Seed the Library** — Upload baseline SOP documents before creating PM procedures.
+4. **Customize Failure Modes** — Review the seeded S5000F taxonomy under *Admin → Failure Modes* and add any custom modes specific to your equipment.
+5. **Import Existing Assets** — Use *Admin → Data Import* to bulk-load existing asset rosters from CSV or JSON.
+
+> **Tip:** The platform selector in the header filters ALL views. If you see no data, verify your selected platform is correct and that your Nextcloud account belongs to the linked group.
 
 ---
 
 ## 3. Dashboard
 
-### Platform Filter
-Buttons at the top scope all data to one or more platforms. Select All or specific platforms. Multiple selections allowed. The selected platform carries through to all list views, create forms, and reports.
+The Dashboard provides at-a-glance fleet health metrics:
 
-### Stats Cards
-- **Total Assets** — With HW/SW/FW breakdown
-- **PM Due This Week** — Coming due in 7 days
-- **PM Overdue** — Past due with last 30-day completions
-- **Open Deficiencies** — Total open with SEV-1/SEV-2 counts
+- **Asset Count** — Total assets registered on the selected platform
+- **Open Deficiencies** — Count of open deficiencies, color-coded by severity
+- **Overdue PMs** — PM procedures past their next-due date
+- **Low Stock Items** — Inventory items below minimum threshold
+- **Readiness Summary** — Assets in FULL-OP, DEG-OP, and DOWN-OP states
 
-### Overdue PM Table
-Lists overdue procedures with name, asset, days overdue, and assigned technician.
-
-### Critical Deficiencies
-Highest severity open deficiencies for immediate attention.
+Select a platform from the header dropdown to filter all dashboard metrics to that platform.
 
 ---
 
-## 4. Configuration Registry (Assets)
+## 4. Asset Registry
 
-### Registering a New Asset
-1. Go to **Configuration Registry** → **+ Register New Asset**
-2. Fill in:
-   - **Asset Name** (required), **Asset Type** (HW/SW/FW), **Platform**
-   - Manufacturer, Model, Serial Number, Version
-   - Location, IP Address, Install Date, Warranty Expiry
-   - **Status** — Operational, Degraded, Offline, In Maintenance, Decommissioned
-   - **UII** — Unique Item Identifier (ISO 15459) — auto-generated if not provided
-   - **CAGE Code** — 5-character contractor identifier
-   - **IUID Compliant** — Mark if asset meets DoD IUID requirements
-   - Linked Assets (digital twin cross-references), Tags, Notes
-3. Click **Create Asset**
+The Asset Registry is your equipment and software digital twin. Every piece of hardware, software, or firmware is tracked here.
 
-> **UII Auto-Generation:** If no UII is provided, the system auto-generates one. If CAGE code and serial number are both present, it formats as `//CAGE/SERIAL` (ISO 15459 compliant). Otherwise it generates `//ALTO/{UUID}`.
+### Creating an Asset
+1. Click **+ New Asset**.
+2. Select **Asset Type**: Hardware / Software / Firmware.
+3. Fill in Name, Manufacturer, Model, Serial Number, Version/Build, Location, IP Address.
+4. Set **Install Date** and **Warranty Expiry** for lifecycle tracking.
+5. Assign a **Platform** and optionally a **Shop** — the shop determines the auto-generated asset ID prefix.
+6. Optionally set a **Parent Asset** to create a hierarchy (e.g., NIC card nested under a server chassis).
+7. Save — the system assigns a sequential identifier.
 
-### Asset Detail View
-Shows all configuration fields plus:
-- **Last Verified** — Date, days ago, and who verified. Shows ⚠ OVERDUE if more than 18 months since last verification
-- **UII** — Unique Item Identifier
-- **IUID Compliant** — Compliance status
-- **CAGE Code** — Contractor identifier
-- Linked assets, PM procedures, open deficiencies
+### Criticality Codes
+| Code | Label | Description |
+|------|-------|-------------|
+| **CR** | Critical | Failure directly impacts mission/operations. Highest resolution priority. |
+| **DE** | Degraded | Functional but below full capacity. Active deficiency or bypass is logged. |
+| **RD** | Redundant | Backup system; reduces impact of primary failure. |
+| **SP** | Spare | Held in reserve, not currently deployed. |
+| **AD** | Administrative | Support equipment with no direct mission criticality. |
 
-### Asset Detail Actions
-- **✏ Edit Asset** — Modify configuration
-- **+ Log Deficiency** — Log a deficiency against this asset
-- **+ PM Procedure** — Add a PM procedure
-- **🔧 Create Modernization** — Start a modernization project
-- **✓ Verify Asset** — Opens verification modal
+### Bypass & Degraded Mode Configuration
+- **Bypass Available** — Indicates the asset can be isolated without total loss of capability.
+- **Bypass Method** — Procedure steps to achieve the bypass.
+- **Degraded Capability %** — Operational capacity when running in bypass/degraded mode.
+- **Failover Asset** — For RD components: which redundant asset takes over on failure.
+- **Failover Time (mins)** — Expected switchover time.
+- **Failover Procedure** — Steps to execute the switchover.
 
-### Asset Verification
-Every asset requires verification every **18 months**. When due, the asset appears on the Validations Due page.
+### Parent / Child Hierarchy
+- Assign a **Parent Asset** to nest assets in a hierarchy.
+- Parent assets display a collapsible child list on their detail page.
+- The asset code includes depth and system position for hierarchical identification.
 
-1. Click **✓ Verify Asset** from the asset detail or Validations Due page
-2. A modal opens showing last verification info with editable fields:
-   - Location (update if changed)
-   - Status
-   - Serial Number
-   - Verification Notes
-3. Click **✓ Confirm Verification**
-4. The verification is stamped with the current user and timestamp
+### UII / IUID Compliance
+- **UII** — Unique Item Identifier per ISO/IEC 15459 (auto-generated if CAGE code and serial number are provided).
+- **CAGE Code** — 5-character manufacturer identifier in the UII namespace.
+- **IUID Compliant** — Set to Yes once the item is physically marked with a compliant 2D data matrix label.
+
+### Photos
+- Attach condition, installation, deficiency, pre-maintenance, or post-maintenance photos.
+- Click **+ Add Photo** on the asset detail page.
+- Use the **Browse** button to select from Nextcloud Files.
+- Set one photo as **Primary** — it appears as the asset thumbnail.
+
+### 3D Models
+- Link GLTF/GLB, STEP, OBJ, or FBX files to an asset for 3D visualization.
+- GLTF/GLB files render immediately in the in-browser Three.js viewer.
+- Other formats are queued for conversion (`pending` status).
+- **Hotspots** can be placed on the 3D model and linked to deficiencies, PMs, or interfaces.
+
+### Verification Cycles
+- Assets require an **18-month verification** — the system tracks last-verified date automatically.
+- Click **Verify Asset** on the detail page to record today as the new verification timestamp.
+- Assets approaching or exceeding the 18-month threshold are flagged in the registry list.
+
+### Readiness States
+The readiness engine calculates operational state from criticality and open deficiencies:
+- **FULL-OP** — No open deficiencies affecting capability.
+- **DEG-OP** — Open deficiency exists; asset is functional but impaired.
+- **DOWN-OP** — Asset is non-functional due to a critical open deficiency.
 
 ---
 
 ## 5. Preventive Maintenance
 
-### Completing a PM
-1. Click **✓ Done** from the PM Dashboard or procedures list
-2. Fill in the closeout modal: Hours Spent, Parts Cost, Labor Cost, Completion Notes
-3. Click **✓ Mark Complete** — next due date is automatically calculated
-
-### Procedure Detail
-Shows all info plus **Last Closeout** — actual hours, costs, and notes from the most recent completion.
-
 ### Creating a PM Procedure
-Go to **PM Procedures** → **+ New Procedure**. Fill in name, asset, category, periodicity, assigned technician, SOP document reference, description, estimated hours.
+1. Go to **All Procedures** → **+ New PM**.
+2. Link to an **Asset** from the Registry.
+3. Set **Periodicity**: Weekly / Monthly / Quarterly / Semi-Annual / Annual.
+4. Optionally attach an **SOP** from the Library.
+5. Assign a responsible **Technician**.
+6. Enter the **Last Completed Date** — next-due is auto-calculated.
 
-### Periodicities
-As Required (manual) · Weekly (+7d) · Monthly (+30d) · Quarterly (+90d) · Semi-Annual (+180d) · Annual (+365d)
+### Periodicity Reference
+| Setting | Interval |
+|---------|----------|
+| Weekly | 7 days |
+| Monthly | 30 days |
+| Quarterly | 90 days |
+| Semi-Annual | 180 days |
+| Annual | 365 days |
+
+### PM Closeout Workflow
+1. Click **Complete** on the PM record.
+2. Fill in: actual completion date, labor hours, parts cost, labor cost, completion notes.
+3. If anomalies were found, click **Create Deficiency** to log a linked deficiency record.
+4. Save — last-completed date updates and next-due is recalculated.
+
+### Initiating LOTO from a PM
+Click **Initiate LOTO** on the PM detail page to create a pre-linked LOTO session for the associated asset before beginning work.
 
 ---
 
 ## 6. Deficiency Tracking
 
 ### Severity Levels
-SEV-1 (Critical) · SEV-2 (High) · SEV-3 (Medium/default) · SEV-4 (Low) · SEV-5 (Informational)
+| Level | Label | Description |
+|-------|-------|-------------|
+| SEV-1 | Mission Critical | Complete loss of capability; immediate response required. |
+| SEV-2 | Significant | Major degradation; workaround may exist but impact is high. |
+| SEV-3 | Moderate | Equipment functional but impaired. |
+| SEV-4 | Minor | Minimal operational impact. |
+| SEV-5 | Cosmetic | No functional impact. |
 
-### Logging a Deficiency
-Go to **+ Log Deficiency**. Fill in summary, description, asset, severity, discovery method, assignment, cost estimates, target completion.
+### Discovery Methods
+- PM Inspection, Walkdown, Self-Reported, External Audit, Automated Alert
 
-### Status Workflow
-Open → In Work → Waiting Parts / Waiting Approval / Scheduled → Closed (or Cancelled)
+### Creating a Deficiency
+1. Go to **Deficiencies** → **+ New Deficiency**.
+2. Select **Severity**, **Discovery Method**, linked **Asset**, location.
+3. Provide a description, initial cost estimate, man-days, and outside entity requirement if applicable.
+4. Save.
 
-### Deficiency Detail View
-Shows all deficiency information plus:
-- **Supply Requests** — All linked supply requisitions with SRFQ number, status, and needed-by date
-- **Troubleshooting History** — Timeline of all notes and status changes
-- **Closeout Details** (if closed) — Root cause, corrective action, actual costs
+### Troubleshooting Log
+- Append-only sequential log of diagnostic steps on each deficiency.
+- Each entry records: technician, date/time, action taken, result observed.
+- Cannot be altered — provides audit integrity.
 
-### Closing a Deficiency
-Click **✓ Close**. Fill in Root Cause (required), Corrective Action Taken (required), Actual Parts Cost, Labor Cost, Man-Days.
+### Deficiency Closeout
+1. Click **Close Out**.
+2. Document **Root Cause**, **Corrective Action**, and **Failure Mode** (from S5000F taxonomy).
+3. Enter actual labor hours, parts cost, and labor cost.
+4. Set resolution date and confirm the asset is back in service.
 
 ### Escalating to Modernization
-Click **🔧 Escalate to Modernization** from any deficiency detail to create a linked modernization project.
+- If a capital upgrade is required, click **Escalate to Mod**.
+- This creates a new Modernization project pre-linked to the deficiency.
+- The deficiency status changes to *Escalated* — it stays open until the mod is complete.
 
-### Requesting Parts from a Deficiency
-Click **🛒 Request Parts** to create a supply requisition linked to this deficiency. Add line items with item name, part number, NSN, CAGE code, manufacturer, quantity, and unit cost.
+### Initiating LOTO from a Deficiency
+- Click **Initiate LOTO** on the deficiency detail.
+- A LOTO session is created pre-linked to the deficiency and associated asset.
 
 ---
 
-## 7. Modernizations
+## 7. LOTO / Tagout
 
-### Status Workflow
-Design → Planning → Approval → Execution → Complete
+### Session Types
+- **Lockout** — Physical lock applied to an energy isolation point.
+- **Tagout** — Warning tag applied where a lockout device cannot be used.
+- **Combination** — Both lock and tag applied at the same isolation point.
+- **Group** — Multiple technicians each apply their own lock to a shared hasp.
 
-### Creating a Modernization
-- **From list:** + New Modernization
-- **From asset:** 🔧 Create Modernization
-- **From deficiency:** 🔧 Escalate to Modernization
+### Tag Number Format
+All sessions receive a system-generated tag number: `LOTO-2026-0001`
 
-### Modernization Detail
-- **→ Advance** moves to next stage (approval timestamp auto-recorded on Approval → Execution)
-- **Cost Summary** — Estimated vs actual (parts, labor, contractor, total)
-- **Technical Data Package** — Supporting documents
-- **Supply Requests** — All linked supply requisitions
-- **Linked Deficiencies** — Associated deficiencies
+- Year segment reflects the calendar year the session was initiated.
+- Sequence resets to 0001 each calendar year.
+- Tag numbers are unique per platform.
 
-### Requesting Parts from a Modernization
-**Note:** The 🛒 Request Parts button is only available once the modernization reaches **Approval** stage or beyond. This prevents ordering parts for unapproved work.
+### Session Lifecycle
+1. **Initiate** — Create the session; select type; link to source PM or Deficiency.
+2. **Assign Devices** — Select isolation devices from Device Inventory.
+3. **Verify** — Record the energy verification method and result. System timestamps the verification.
+4. **Print Audit Sheet** — Generate a printable record for posting at the work site.
+5. **Release** — All devices returned to Available; session status set to Released.
+
+### Device Inventory
+- Manage physical lock and tag devices under **LOTO → Device Inventory**.
+- Each device: serial number (unique), color, key number, type, status (Available / In Use / Out of Service).
+- Devices are automatically marked **In Use** when assigned to a session and returned to **Available** on release.
+
+### Verify Workflow
+- After devices are applied, a **Verify** step confirms energy isolation is achieved.
+- Verification method, result, and timestamp are recorded.
+- Bulk verification via **Print Audit** also marks all active sessions verified.
+
+### Print Audit Sheet
+- Click **Print Audit** from the Active Sessions tab.
+- Generates a formatted audit record of all active sessions.
+- The printout includes: tag number, asset, isolation points, device list, applied-by, verified-by, timestamps.
+- All printed sessions are automatically logged as verified.
+
+---
+
+## 8. Modernizations
+
+### 5-Stage Lifecycle
+| Stage | Description |
+|-------|-------------|
+| **Design** | Concept development, technical feasibility, initial cost estimate |
+| **Planning** | Detailed work scope, resource allocation, schedule |
+| **Approval** | Formal authorization gate — system records approval timestamp automatically |
+| **Execution** | Active work in progress; linked supply and LOTO sessions typically active here |
+| **Complete** | All work done, TDP finalized, asset record updated |
 
 ### Technical Data Package (TDP)
-Document Types: Drawings · Tech Manuals · Test Plan · Training · SOPs · Other
+- Each modernization has a TDP tab organizing documents by category:
+  - Drawings, Tech Manuals, Test Plans, Training Materials, PM SOPs, Other
+- Documents are stored in the Library — TDP holds references, not raw files.
+- Revisions auto-update when the Library document is revised.
+- Print the complete TDP package from the modernization detail page.
 
-Each document tracks: title, file reference (Nextcloud path or URL), status (Pending/In Progress/Complete), notes.
-
----
-
-## 8. Availability Projects
-
-### Creating a Project
-Go to **📅 Avail Projects** → **+ New Project**. Start Date and End Date are required (defines the availability window).
-
-### Adding Items
-Click **+ Add Item**. Select type: PM Procedure, Modernization, Deficiency, or Milestone.
-
-Out-of-window warnings are shown if item dates fall outside the project window. Items are still added so conflicts are visible.
-
-### Gantt Chart
-| Color | Type |
-|-------|------|
-| Blue bars | PM Procedures |
-| Purple bars | Modernizations |
-| Red bars | Deficiencies |
-| Yellow diamonds | Milestones |
-| Orange dashed line | Today |
-| Blue shading | Project window |
-
-Click any bar to see a popup with item details and a link to the full record.
-
-### Milestones
-Point-in-time markers: "100% Modernization Complete", "PM Lock", "System Online", "Inspection Day", etc.
+### Linked Records
+- **Deficiencies** — link open deficiencies to scope the mod and include their costs in cost roll-up.
+- **Supply Requests** — associate requisitions for a single view of all parts ordered for the project.
+- When the mod reaches Complete, linked open deficiencies are prompted for closeout.
 
 ---
 
-## 9. Work Packages
+## 9. Availability Projects & Gantt
 
-Work packages bundle PMs and/or modernizations together for RFQ export or availability project inclusion.
+### Creating an Availability Window
+1. Go to **Avail Projects** → **+ New Availability Project**.
+2. Set **Start Date** and **End Date** of the maintenance window.
+3. Provide project name, description, and project lead.
+4. Save — the Gantt chart will display the full window as the timeline.
+
+### Adding Work Items
+1. Click **+ Add Work Item** inside the project.
+2. Select item type: PM Procedure / Modernization / Deficiency / Milestone.
+3. Link the specific record (or enter milestone text).
+4. Set planned start and end dates within the window.
+5. System warns if dates fall outside the availability window.
+
+### Gantt Chart Features
+- Color-coded bars: blue = PM, purple = Modernization, yellow = Deficiency, diamond = Milestone.
+- Click any bar to open a detail popup with status and navigation links.
+- Draw finish-to-start dependency arrows between work items.
+- Milestone markers displayed as vertical diamonds at the planned date.
+
+---
+
+## 10. Work Packages & RFQ
 
 ### Creating a Work Package
-Go to **📦 Work Packages** → **+ New Work Package**. Fill in:
-- Title, Scope of Work description
-- Status — Draft, Submitted, Approved, Complete
-- Package Type — Mixed, PMs Only, Modernizations Only
-- Assigned To, Approver
-- RFQ Response Due Date
+1. Go to **Work Packages** → **+ New Work Package**.
+2. Provide a package name, description, and required-by date.
+3. Add line items (PMs or Modernizations).
+4. The system enforces **one-to-one assignment** — an item cannot appear in two active packages.
+5. Cost estimates roll up automatically to the package total.
 
-> **RFQ Number** is auto-generated on creation (format: `RFQ-XXXXXXXX`).
+### Auto-Generated RFQ Numbers
+Format: `RFQ-2026-0001` — sequential per platform per calendar year. Cannot be manually changed.
 
-### Adding Items
-Click **+ Add Item**. Select PM Procedure or Modernization from the dropdown.
-
-> **One-to-one constraint:** Each PM or modernization can only belong to one work package at a time. If already assigned, an error is shown.
-
-### Exporting an RFQ
-Click **📄 Export RFQ** to generate a professional Request for Quote document that opens in a new window for printing. The RFQ includes:
-- Cover page with RFQ number, organization, date issued, response due date
-- Project information table
-- Scope of work description
-- Line items with type, description, estimated hours, parts, labor, contractor costs
-- Terms and conditions
-- Signature block (Prepared By, Approved By, Vendor)
+### PDF Export
+Click **Export RFQ** for a print-ready PDF including:
+- RFQ number, scope summary, line items with cost estimates, terms and conditions, signature blocks.
 
 ---
 
-## 10. Supply & Warehouse
+## 11. Supply & Warehouse
 
-### Supply Requests
+### Requisitions
+1. Click **+ New Requisition**.
+2. Fill in Part Name, NSN, CAGE Code, Manufacturer Part Number, Unit of Measure, Quantity.
+3. Link to a Modernization, Deficiency, or PM for cost roll-up traceability.
+4. Auto-generated SRFQ number: `SRFQ-2026-0001`.
+5. Click **Export SRFQ** for a vendor-ready supply RFQ PDF.
 
-#### Creating a Supply Request
-Go to **🛒 Supply Requests** → **+ New Request**. Fill in title, priority, needed-by date, requested by, and notes.
-
-**Priority Levels:**
-- Routine — Standard procurement timeline
-- Urgent — Expedited processing needed
-- Emergency — Immediate action required
-
-> **SRFQ Number** is auto-generated on creation (format: `SRFQ-XXXXXXXX`).
-
-#### Adding Line Items
-Click **+ Add Item** on the supply request detail. Fill in:
-- **Item Name** (required)
-- **Part Number** — Manufacturer part number
-- **NSN** — National Stock Number (format: 5945-01-234-5678)
-- **Manufacturer** — Who makes the item
-- **CAGE Code** — Contractor identifier
-- **Unit of Measure** — Each, Box, Lot, Gallon, Liter, Feet, Meter, Pair, Set, Roll
-- **Quantity** and **Estimated Unit Cost**
-- **Preferred Vendor**
-
-#### Supply Request Status Workflow
-Draft → Submitted → Approved → Ordered → Partially Received → Received → Closed (or Cancelled)
-
-#### Exporting a Supply RFQ
-Click **📄 Export SRFQ** to generate a vendor-ready Request for Quote with all line items, quantities, delivery requirements, and signature blocks.
-
-#### Quarterly Revalidation
-Open supply requests are flagged for revalidation every **90 days** to confirm parts are still needed. These appear on the Validations Due page with two options:
-- **✓ Still Needed** — Resets the 90-day revalidation clock
-- **✕ Cancel** — Cancels the supply request
+### Quarterly Revalidation
+Requisitions with no activity in 90 days are flagged under **Validations Due**. Revalidate or cancel each flagged requisition to prevent stale orders.
 
 ### Inventory Management
+- Track on-hand stock per part number with minimum quantity thresholds.
+- Items below threshold are flagged in red on the Inventory list.
+- Full transaction history is available per item.
 
-#### Adding Inventory Items
-Go to **🗄 Inventory** → **+ Add Item**. Fill in:
-- Item Name, Part Number, Category, Description
-- Initial Quantity, Reorder Point
-- Unit Cost, Location (shelf/bin), Vendor, Lead Time
-- **Count Class** — Determines cycle count frequency:
+### Stock Transactions
+| Transaction | Description |
+|-------------|-------------|
+| **Receive** | Record incoming stock against a requisition |
+| **Issue** | Record parts issued to a PM, Deficiency, or Modernization |
+| **Return** | Record unused parts returned to stock |
+| **Adjust** | Correct on-hand quantity following a count or audit finding |
 
-| Class | Frequency | Best For |
-|-------|-----------|----------|
-| A — Daily | Every day | High-value/fast-moving items |
-| A — Weekly | Every 7 days | High-value/fast-moving items |
-| B — Monthly | Every 30 days | Mid-tier inventory |
-| C — Quarterly | Every 90 days | Low-volume/slow-moving items |
-| Full — Annual | Every 365 days | Full physical inventory |
-
-#### Stock Transactions
-Click **±** on any inventory item to record a transaction:
-- **Receive** — Add stock (delivery received)
-- **Issue** — Remove stock (issued to technician)
-- **Return** — Return unused stock
-- **Adjust** — Set absolute quantity (after physical count)
-
-All transactions are logged with quantity, type, notes, and who performed them.
-
-#### Inventory Detail View
-Click any item name to see:
-- Full item details and stock levels (On Hand, Reserved, Available, Reorder Point)
-- Full transaction history with dates, types, quantities, and users
-
-#### Low Stock Warning
-Items below their reorder point are highlighted in orange on the inventory list and flagged on the Validations Due page.
+### Cycle Counting (A/B/C)
+| Class | Frequency | Description |
+|-------|-----------|-------------|
+| **A** | Monthly | High-value or high-usage parts |
+| **B** | Quarterly | Moderate value/usage |
+| **C** | Annual | Low-cost, low-movement items |
 
 ---
 
-## 11. Validations Due
+## 12. The Library
 
-The Validations Due page shows everything that needs attention in the next 7 days, organized into three sections.
+The Library is the central document registry for all technical documents.
 
-### Asset Verifications Due
-Assets that haven't been verified in 18+ months or are due within the next 7 days.
+### Document Categories
+Drawing, Tech Manual, Specification, SOP, Test Plan, Training Material, Other
 
-**Columns:** Asset ID, Name, Type, Platform, Location, Last Verified, Next Due, Verified By, Status, Action
+### Uploading a Document
+1. Click **+ New Document**.
+2. Fill in title, document number, category, and revision identifier (e.g., Rev A, v2.1).
+3. Click **Browse** to select the file from Nextcloud Files.
+4. Set status: Draft / Active / Superseded / Archived.
 
-Click **✓ Verify** to open the verification modal — update any fields and confirm.
+### Revision Tracking
+- Increment the revision identifier when uploading a new version.
+- Set the old revision to **Superseded** — it is retained for traceability.
+- PMs and TDPs reference documents by ID — they always display the current Active revision.
 
-### Inventory Cycle Counts Due
-Inventory items due for cycle count based on their count class.
-
-**Columns:** Item Name, Part #, Class, Platform, Location, On Hand, Last Counted, Next Due, Status, Action
-
-Click **✓ Count** to enter the physical count quantity. The system records an adjust transaction and calculates the next count due date.
-
-### Supply Requisitions — Revalidation Due
-Open supply requests that haven't been revalidated in 90+ days.
-
-- **✓ Still Needed** — Confirms parts are still required, resets 90-day clock
-- **✕ Cancel** — Cancels the requisition as no longer needed
-
-### Printing
-Click **🖨 Print** to print the validations due list. Sidebar and buttons are hidden in the print view.
+### SOP Attachment
+- SOPs in the Library can be linked to PM Procedures via the SOP field on the PM record.
+- They can also be included in Modernization TDPs under the *PM SOPs* category.
 
 ---
 
-## 12. Platforms
+## 13. System Canvas
 
-Platforms represent physical locations or organizational units (e.g. NAS Pensacola, School District HQ).
+The System Canvas lets you draw system architecture diagrams using real assets as nodes.
 
-### How Platforms Work
-- Assets belong to exactly one platform
-- PMs and deficiencies inherit platform from their linked asset
-- Users see only their assigned platforms' data
-- Access controlled via Nextcloud group membership
+### Creating a Diagram
+1. Go to **System Canvas** → **+ New Canvas**.
+2. Click **Add Asset Node** to place an asset from the Registry onto the canvas.
+3. Use the **Interface Line** tool to draw connections between nodes.
+4. Label interface lines with type: electrical, data, mechanical, fluid, RF, HVAC, network, etc.
+5. Drag nodes to arrange the layout — positions are saved automatically.
+
+### Asset Nodes
+- Each node links to a real asset record. Click to open the asset detail in a side panel.
+- Node color reflects current status: green = nominal, yellow = degraded, red = open deficiency, gray = bypassed.
+
+---
+
+## 14. Failure Modes
+
+The Failure Mode Taxonomy provides structured classification for deficiency closeouts, based on S5000F / ASD reliability taxonomy conventions.
+
+### Standard Categories
+Electrical, Mechanical, Software, Firmware, Environmental, Operator Error, Wear / Age, Corrosion, Contamination, General
+
+### Creating Custom Failure Modes
+1. Go to **Admin → Failure Modes** (admin access required).
+2. Click **+ New Failure Mode**.
+3. Provide code, name, category, subcategory, and description.
+4. Custom modes appear alongside standard taxonomy in the deficiency closeout form.
+
+### Fleet Analytics
+- Each mode shows a **Fleet Count** badge: total deficiencies closed against it.
+- Modes with 5+ occurrences are flagged in red — indicating a systemic pattern.
+- Use counts to prioritize modernization projects and PM schedule adjustments.
+
+---
+
+## 15. Data Import
+
+### Overview
+The Data Import tool allows bulk-loading of asset records from CSV or JSON files. Column mapping and validation are performed before any records are written to the database.
+
+### Supported Formats
+- **CSV** — Comma-separated values. First row must be column headers.
+- **JSON** — Array of objects format (`[{"name": "Server A", ...}]`).
+
+### Import Workflow
+1. Go to **Admin → Data Import** → **+ New Import**.
+2. Browse and select your file from Nextcloud Files.
+3. The system detects headers and auto-maps columns using common name aliases.
+4. On the **Column Mapping** screen, confirm or correct each source column → target field assignment.
+5. Click **Validate** — the system checks each row for required fields and valid values.
+6. Review any validation errors listed by row number.
+7. Click **Run Import** — valid rows are inserted; rows with errors are skipped.
+8. A completion summary shows imported vs. skipped counts.
+
+### Column Mapping Reference
+| Target Field | Required | Accepted Values / Format |
+|-------------|----------|--------------------------|
+| Asset Name | **Yes** | Any text |
+| Asset Type | No | `hardware` / `software` / `firmware` |
+| Manufacturer | No | Any text |
+| Model | No | Any text |
+| Serial Number | No | Any text |
+| Version / Build | No | Any text |
+| Location | No | Any text |
+| IP Address | No | Any text |
+| Install Date | No | `YYYY-MM-DD` preferred |
+| Warranty Expiry | No | `YYYY-MM-DD` preferred |
+| Status | No | `operational` / `degraded` / `offline` / `maintenance` / `decommissioned` |
+| Notes | No | Any text |
+| Tags | No | Comma-separated tags |
+| Criticality Code | No | `CR` / `DE` / `RD` / `SP` / `AD` |
+| UII | No | ISO/IEC 15459 format |
+| CAGE Code | No | 5-character CAGE code |
+| IUID Compliant | No | `0` or `1` |
+
+### Auto-Mapped Header Aliases
+The system recognizes common column name variations: `S/N`, `Serial #`, `SN`, `Make`, `MFR`, `IP Addr`, `Install Date`, `Warranty Exp`, `Crit`, `CAGE`, and many others.
+
+> **Tip:** Run a test import with 10–20 rows first to validate your column mapping before importing a large roster. Past import jobs are listed with their full results for reference.
+
+---
+
+## 16. Platforms & Shops
 
 ### Creating a Platform (Admin)
-Go to **Admin → Platforms** → **+ New Platform**. Set the Nextcloud Group Name to link it to a user group. Add users to that group in **Nextcloud Settings → Users**.
+1. Go to **Admin → Platforms & Shops** → **+ New Platform**.
+2. Enter platform name, location, and description.
+3. Link to a **Nextcloud Group** — members of this group will see the platform.
+4. Save.
+
+### Multi-Site Access
+- Users with membership in multiple platform groups can switch between platforms using the header selector.
+- Cross-platform data sharing is not supported — each platform is a fully isolated data scope.
+- Admin users (Nextcloud admins) can see all platforms regardless of group membership.
+
+### Creating Shops
+Under a Platform, add one or more Shops:
+1. Click **+ New Shop** on the Platform detail page.
+2. Enter shop code (e.g., `SHB`), shop name, discipline, and supervisor.
+3. Save.
+
+> **Important:** Shop codes cannot be changed after assets have been created under them. The code becomes a permanent part of every asset ID assigned to that shop.
 
 ---
 
-## 13. Settings
+## 17. Settings
 
-### Access Control
-Set the **Editor Group** — only members can create/edit/delete records. Nextcloud admins always have full access.
-
-### PMS Procedures Folder
-SOP documents are stored in the **PMS Procedures** folder in Nextcloud Files, auto-created for each user on login.
-
-### User Manual
-Available in the sidebar under **Admin → User Manual**.
+The Settings page provides platform-level configuration for your Maintain Ops Suite instance. Access via **Admin → Settings**.
 
 ---
 
-## 14. Mobile App (Field Technician)
+## 18. Mobile App (Field Technician)
 
-### Dashboard
-Platform filter buttons · My Work cards (open deficiencies, overdue PMs, total PMs) · Read-only banner if subscription needed.
+The Maintain Ops Suite Android app pairs with your Nextcloud installation for field access.
 
-### Completing a PM
-Open PM → tap **✓ Mark Complete** → fill in hours, costs, notes → tap **✓ Mark Complete**.
+### Field Capabilities
+- **Complete PMs** — Record completion, log hours, add notes.
+- **Log Deficiencies** — Create deficiency records from the field with photos.
+- **Close Deficiencies** — Complete closeout forms including root cause and corrective action.
+- **Check Supply Status** — View requisition status and inventory levels.
 
-### Logging a Deficiency
-Tap **+ Log Deficiency** → fill in summary, asset, severity, discovery method, description → tap **Log Deficiency**.
-
-### Deficiency Detail
-Shows all deficiency information including:
-- Severity and status badges
-- Cost and effort estimates
-- **Supply Requests** — All linked supply requisitions with SRFQ number and live status. Shows "✓ Parts have arrived!" when status is Received.
-- Troubleshooting history timeline
-- Closeout details (if closed)
-
-### Requesting Parts (Mobile)
-From a deficiency detail, tap **🛒 Request Parts** to create a supply requisition:
-1. Add line items with item name, part number, NSN, and quantity
-2. Tap **+ Add Item** to add more lines
-3. Tap **✓ Submit Request** — creates an SRFQ linked to this deficiency
-4. A confirmation shows the generated SRFQ number
-
-### Closing a Deficiency
-Open deficiency → tap **Closed** → fill in root cause (required), corrective action (required), actual costs → tap **✓ Close Deficiency**.
-
-### Subscription
-7-day free trial included. After trial, read-only mode until subscribed.
-- **Monthly** — $9.99/month
-- **Annual** — $79.99/year (save 33%)
+### Trial & Subscription
+- **7-day free trial** included on first install.
+- After the trial, a subscription is required for **write access** (logging, completing, closing records).
+- **Read-only access** remains free.
+- Plans: Monthly ($9.99/mo) or Annual ($79.99/yr).
 
 ---
 
-## 15. Appendix
+## 19. Appendix
 
-### Asset Statuses
-Operational · Degraded · Offline · In Maintenance · Decommissioned
+### Keyboard & Navigation Tips
+- The left sidebar provides navigation between all modules.
+- The platform dropdown in the header filters all data to the selected platform.
+- Use the search/filter bar at the top of list views to narrow results.
+- Press **Escape** to close any open modal.
 
-### Deficiency Statuses
-Open · In Work · Waiting Parts · Waiting Approval · Scheduled · Closed · Cancelled
+### Data Retention
+- All records are retained indefinitely unless manually deleted by an admin.
+- Closed deficiencies, completed PMs, released LOTO sessions, and completed modernizations are fully searchable from their respective list views.
+- Import job records are retained for reference and can be manually deleted from *Admin → Data Import*.
 
-### Modernization Stages
-Design → Planning → Approval → Execution → Complete
+### Criticality vs. Readiness
+- **Criticality** is a static classification set by an administrator (CR, DE, RD, SP, AD).
+- **Readiness** is a dynamic state calculated by the system from open deficiencies and bypass flags.
+- A Critical (CR) asset with no open deficiencies is in **FULL-OP** state.
+- A Critical (CR) asset with an open deficiency is in **DEG-OP** or **DOWN-OP** depending on severity.
 
-### Availability Project Statuses
-Planning · Approved · In Progress · Complete
+### Asset Code Format
+Assets assigned to a shop receive a code in the format:
+```
+SHOPCODE-NNNN
+```
+Child assets append their position:
+```
+SHOPCODE-NNNN-NN
+```
+Where `NNNN` is the sequential parent number and `NN` is the child position within the parent.
 
-### Work Package Statuses
-Draft · Submitted · Approved · Complete
-
-### Supply Request Statuses
-Draft · Submitted · Approved · Ordered · Partially Received · Received · Closed · Cancelled
-
-### Supply Request Priorities
-Routine · Urgent · Emergency
-
-### Inventory Count Classes
-A-Daily · A-Weekly · B (Monthly) · C (Quarterly) · Full (Annual)
-
-### PM Periodicities
-As Required (manual) · Weekly (+7d) · Monthly (+30d) · Quarterly (+90d) · Semi-Annual (+180d) · Annual (+365d)
-
-### RFQ Number Formats
-- **Work Package RFQ:** `RFQ-XXXXXXXX` — Labor/services packages sent to contractors
-- **Supply RFQ:** `SRFQ-XXXXXXXX` — Parts/materials packages sent to vendors
-
-### Standards Reference
-- **ISO/IEC 15459** — Unique Item Identifier (UII) format
-- **ISO/IEC 16022** — Data Matrix barcode standard (planned)
-- **ISO/IEC 15434** — Barcode data encoding syntax (planned)
-- **MIL-STD-130** — DoD asset identification marking
-
----
-
-*Maintain Ops Suite v2.0.3 | Alto Technologies LLC*
-*Support: https://github.com/Cyberseal89/maintain-ops-suite-nextcloud/issues*
+### Contact & Support
+- **Issues / Feature Requests:** https://github.com/Cyberseal89/maintain-ops-suite-nextcloud/issues
+- **Developer:** Alto Technologies LLC — contact@altotechnologiesllc.com
+- **Website:** https://altotechnologiesllc.com

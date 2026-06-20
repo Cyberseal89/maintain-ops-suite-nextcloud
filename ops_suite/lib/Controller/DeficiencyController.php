@@ -90,6 +90,7 @@ class DeficiencyController extends Controller {
         $def->setTargetCompletion($data['target_completion'] ?: null);
         $def->setLinkedProcedureId((int)($data['linked_procedure_id'] ?? 0));
         $def->setPlatformId(isset($data['platform_id']) && $data['platform_id'] ? (int)$data['platform_id'] : null);
+        $def->setFailureModeId(isset($data['failure_mode_id']) && $data['failure_mode_id'] ? (int)$data['failure_mode_id'] : null);
         $def->setCreatedBy($uid);
         $def->setCreatedAt($now);
         $def->setUpdatedAt($now);
@@ -136,7 +137,11 @@ class DeficiencyController extends Controller {
         if (array_key_exists('corrective_action', $data))  $def->setCorrectiveAction($data['corrective_action']);
         // Auto-set closed_by and closed_at when closing
         if (array_key_exists('modernization_id', $data))  $def->setModernizationId($data['modernization_id'] ? (int)$data['modernization_id'] : null);
+        if (array_key_exists('failure_mode_id', $data))   $def->setFailureModeId($data['failure_mode_id'] ? (int)$data['failure_mode_id'] : null);
         if (array_key_exists('deferred_from_modernization', $data)) $def->setDeferredFromModernization((int)$data['deferred_from_modernization']);
+        if (array_key_exists('budget_status', $data))     $def->setBudgetStatus($data['budget_status'] ?: 'unbudgeted');
+        if (array_key_exists('budget_fiscal_year', $data))$def->setBudgetFiscalYear($data['budget_fiscal_year'] ? (int)$data['budget_fiscal_year'] : null);
+        if (array_key_exists('failure_mode', $data))       $def->setFailureMode($data['failure_mode'] ?: null);
         if (isset($data['status']) && $data['status'] === 'closed' && $oldStatus !== 'closed') {
             $def->setClosedBy($uid ?: 'field');
             $def->setClosedAt(date('Y-m-d H:i:s'));

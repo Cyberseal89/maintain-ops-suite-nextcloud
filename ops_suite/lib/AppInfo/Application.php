@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace OCA\OpsSuite\AppInfo;
 
+use OCA\OpsSuite\Migration\SeedFailureModes;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -18,7 +19,9 @@ class Application extends App implements IBootstrap {
         parent::__construct(self::APP_ID);
     }
 
-    public function register(IRegistrationContext $context): void {}
+    public function register(IRegistrationContext $context): void {
+        $context->registerRepairStep(SeedFailureModes::class);
+    }
 
     public function boot(IBootContext $context): void {
         // When a user logs in, ensure their PMS Procedures folder exists

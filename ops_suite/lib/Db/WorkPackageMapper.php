@@ -29,4 +29,24 @@ class WorkPackageMapper extends QBMapper {
         $qb->orderBy('updated_at', 'DESC');
         return $this->findEntities($qb);
     }
+
+    public function findForSource(string $sourceType, int $sourceId): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')->from($this->getTableName())
+           ->where($qb->expr()->eq('source_type', $qb->createNamedParameter($sourceType)))
+           ->andWhere($qb->expr()->eq('source_id', $qb->createNamedParameter($sourceId, IQueryBuilder::PARAM_INT)))
+           ->orderBy('updated_at', 'DESC');
+        return $this->findEntities($qb);
+    }
+
+    public function findAwarded(?int $platformId = null): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')->from($this->getTableName())
+           ->where($qb->expr()->eq('status', $qb->createNamedParameter('awarded')))
+           ->andWhere($qb->expr()->isNotNull('award_amount'));
+        if ($platformId) {
+            $qb->andWhere($qb->expr()->eq('platform_id', $qb->createNamedParameter($platformId, IQueryBuilder::PARAM_INT)));
+        }
+        return $this->findEntities($qb);
+    }
 }

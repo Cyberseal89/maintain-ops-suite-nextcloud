@@ -24,6 +24,7 @@ use OCP\AppFramework\Db\Entity;
  * @method string  getCreatedBy()                @method void setCreatedBy(string $v)
  * @method string  getCreatedAt()                @method void setCreatedAt(string $v)
  * @method string  getUpdatedAt()                @method void setUpdatedAt(string $v)
+ * @method ?string getLocalUuid()               @method void setLocalUuid(?string $v)
  */
 class Procedure extends Entity implements \JsonSerializable {
     protected string  $name                    = '';
@@ -45,6 +46,7 @@ class Procedure extends Entity implements \JsonSerializable {
     protected string  $createdAt               = '';
     protected string  $updatedAt               = '';
     protected ?int     $platformId     = null;
+    protected ?string  $localUuid      = null;
 
     public function jsonSerialize(): array {
         $id    = $this->getId();
@@ -78,6 +80,7 @@ class Procedure extends Entity implements \JsonSerializable {
             'created_at'                => $this->createdAt,
             'updated_at'                => $this->updatedAt,
             'platform_id'               => $this->platformId,
+            'local_uuid'                => $this->localUuid,
             'computed_status'           => $status,
         ];
     }
