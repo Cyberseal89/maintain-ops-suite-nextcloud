@@ -1,5 +1,5 @@
 /**
- * OpsSuite v3.17.3
+ * OpsSuite v3.18.0
  * Sprint 0A/0B: shops, asset coding (TYPE-SHOP-POSITION), criticality,
  * readiness engine, local_uuid offline sync foundation.
  */
@@ -245,6 +245,16 @@ var API = {
                   create:  d     => req('POST',   '/api/component-library', d),
                   update:  (id,d)=> req('PUT',    '/api/component-library/'+id, d),
                   destroy: id    => req('DELETE', '/api/component-library/'+id) },
+  fmea:         { listWorksheets:  p           => req('GET',    '/api/fmea/worksheets'+qs(p)),
+                  getWorksheet:    id          => req('GET',    '/api/fmea/worksheets/'+id),
+                  findOrCreate:    d           => req('POST',   '/api/fmea/worksheets/find-or-create', d),
+                  updateWorksheet: (id,d)      => req('PUT',    '/api/fmea/worksheets/'+id, d),
+                  destroyWorksheet:id          => req('DELETE', '/api/fmea/worksheets/'+id),
+                  publishWorksheet:(id,d)      => req('POST',   '/api/fmea/worksheets/'+id+'/publish', d),
+                  listEntries:     wsId        => req('GET',    '/api/fmea/worksheets/'+wsId+'/entries'),
+                  createEntry:     (wsId,d)    => req('POST',   '/api/fmea/worksheets/'+wsId+'/entries', d),
+                  updateEntry:     (wsId,id,d) => req('PUT',    '/api/fmea/worksheets/'+wsId+'/entries/'+id, d),
+                  destroyEntry:    (wsId,id)   => req('DELETE', '/api/fmea/worksheets/'+wsId+'/entries/'+id) },
   photos:       { list:          (assetId,p)   => req('GET',    '/api/assets/'+assetId+'/photos'+qs(p)),
                   create:        (assetId,d)   => req('POST',   '/api/assets/'+assetId+'/photos', d),
                   update:        (assetId,id,d)=> req('PUT',    '/api/assets/'+assetId+'/photos/'+id, d),
@@ -1877,9 +1887,9 @@ function sopLink(path) {
 
 /* ── Document Registry ─────────────────────────────────────────── */
 
-var DOC_CATEGORIES = ['mil_std_drawing','drawing','tech_manual','spec','sop','test_plan','training','other'];
-var DOC_CAT_ICONS  = {mil_std_drawing:'📐',drawing:'📐',tech_manual:'📖',spec:'📋',sop:'🔧',test_plan:'🧪',training:'🎓',other:'📄'};
-var DOC_CAT_LABELS = {mil_std_drawing:'MIL-STD Drawing',drawing:'Drawing',tech_manual:'Tech Manual',spec:'Specification',sop:'SOP',test_plan:'Test Plan',training:'Training',other:'Other'};
+var DOC_CATEGORIES = ['mil_std_drawing','fmea','drawing','tech_manual','spec','sop','test_plan','training','other'];
+var DOC_CAT_ICONS  = {mil_std_drawing:'📐',fmea:'⚠',drawing:'📐',tech_manual:'📖',spec:'📋',sop:'🔧',test_plan:'🧪',training:'🎓',other:'📄'};
+var DOC_CAT_LABELS = {mil_std_drawing:'MIL-STD Drawing',fmea:'FMEA Worksheet',drawing:'Drawing',tech_manual:'Tech Manual',spec:'Specification',sop:'SOP',test_plan:'Test Plan',training:'Training',other:'Other'};
 var DOC_STATUSES   = ['draft','active','superseded','obsolete'];
 
 function docStatusBadge(s) {
@@ -8280,6 +8290,15 @@ async function viewCanvasDetail(id) {
     // ── Header row ───────────────────────────────────────────────
     var panelHdr=div(''); panelHdr.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;';
     if (node.asset_id) panelHdr.appendChild(btn('ops-btn-sm','👁 Full Asset Record',function(){navigate('asset-detail',node.asset_id);}));
+    panelHdr.appendChild(btn('ops-btn-sm','⚠ FMEA',async function(){
+      var ws = await API.fmea.findOrCreate({
+        canvas_id: canvas.id,
+        node_id:   node.id,
+        asset_id:  node.asset_id || null,
+        title:     (node.asset_name||node.label) + ' — FMEA',
+      }).catch(()=>null);
+      if (ws) navigate('fmea-worksheet', ws.id);
+    }));
     panelHdr.appendChild(btn('ops-btn-sm','✕ Close',function(){sidePanel.style.display='none';selId=null;document.getElementById('cvs-del').style.display='none';render();}));
     sidePanelBody.appendChild(panelHdr);
 
@@ -8375,6 +8394,316 @@ async function viewCanvasDetail(id) {
 
   // Auto-load live status for live canvases, then render
   if (canvas.is_live) doLiveStatus(); else render();
+}
+
+// ── RPN helpers ───────────────────────────────────────────────────────────
+function rpnColor(rpn) {
+  if (rpn >= 200) return '#f87171'; // red   — critical
+  if (rpn >= 100) return '#fb923c'; // orange — high
+  if (rpn >= 40)  return '#fbbf24'; // yellow — medium
+  return '#4ade80';                  // green  — low
+}
+function rpnLabel(rpn) {
+  if (rpn >= 200) return 'Critical';
+  if (rpn >= 100) return 'High';
+  if (rpn >= 40)  return 'Medium';
+  return 'Low';
+}
+
+// ── FMEA Worksheet view ───────────────────────────────────────────────────
+async function viewFmeaWorksheet(id) {
+  setContent(el('div',{cls:'ops-empty',text:'Loading…'}));
+  var ws = await API.fmea.getWorksheet(id).catch(()=>null);
+  if (!ws) { setContent(el('div',{cls:'ops-empty',text:'Worksheet not found.'})); return; }
+
+  var entries = ws.entries || [];
+
+  var wrap = div('');
+  var hdr  = div('ops-page-header');
+  hdr.appendChild(btn('','← Canvas',function(){navigate('canvas-detail', ws.canvas_id);}));
+  hdr.appendChild(el('h2',{text:ws.title}));
+  hdr.appendChild(span('ops-badge '+(ws.status==='active'?'badge-green':'badge-gray'), ws.status));
+  if (ws.doc_id) hdr.appendChild(span('ops-badge badge-blue','Published'));
+  hdr.appendChild(btn('primary','+ Add Entry', function(){ showFmeaEntryForm(ws, null, function(){ viewFmeaWorksheet(id); }); }));
+  hdr.appendChild(btn('','📄 Publish', function(){ showFmeaPublishForm(ws, function(){ viewFmeaWorksheet(id); }); }));
+  if (ws.doc_id) hdr.appendChild(btn('','📊 FMEA Report', async function(){
+    var full = await API.fmea.getWorksheet(id).catch(()=>null);
+    if (full) openFmeaReport(full, full.entries||[]);
+  }));
+  wrap.appendChild(hdr);
+
+  // ── Summary KPI row ───────────────────────────────────────────────
+  if (entries.length) {
+    var maxRpn   = Math.max.apply(null, entries.map(function(e){return e.rpn;}));
+    var critCount= entries.filter(function(e){return e.rpn>=200;}).length;
+    var highCount= entries.filter(function(e){return e.rpn>=100&&e.rpn<200;}).length;
+    var kpiRow=div(''); kpiRow.style.cssText='display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;';
+    function kpi(label,value,color){
+      var k=div('ops-card'); k.style.cssText='flex:1;min-width:120px;padding:12px 16px;text-align:center;border-left:3px solid '+color+';';
+      k.appendChild(el('div',{text:String(value),style:'font-size:22px;font-weight:900;color:'+color+';'}));
+      k.appendChild(el('div',{text:label,style:'font-size:10px;color:#64748b;text-transform:uppercase;margin-top:2px;'}));
+      return k;
+    }
+    kpiRow.appendChild(kpi('Entries',     entries.length, '#38bdf8'));
+    kpiRow.appendChild(kpi('Max RPN',     maxRpn,         rpnColor(maxRpn)));
+    kpiRow.appendChild(kpi('Critical',    critCount,      '#f87171'));
+    kpiRow.appendChild(kpi('High',        highCount,      '#fb923c'));
+    wrap.appendChild(kpiRow);
+  }
+
+  // ── Entries table ─────────────────────────────────────────────────
+  var card = div('ops-card'); wrap.appendChild(card);
+
+  if (!entries.length) {
+    card.appendChild(el('p',{cls:'ops-empty',text:'No entries yet. Click "+ Add Entry" to start the analysis.'}));
+  } else {
+    var tbl = makeTable(
+      ['#','Function','Failure Mode','Local Effect','System Effect','S','O','D','RPN','Actions',''],
+      entries.map(function(e, i) {
+        var rpn = e.rpn;
+        var rpnCell = div(''); rpnCell.style.cssText='display:flex;flex-direction:column;align-items:center;gap:2px;';
+        rpnCell.appendChild(el('span',{text:String(rpn),style:'font-weight:900;font-size:14px;color:'+rpnColor(rpn)+';'}));
+        rpnCell.appendChild(el('span',{text:rpnLabel(rpn),style:'font-size:9px;color:'+rpnColor(rpn)+';'}));
+        if (e.revised_rpn) {
+          rpnCell.appendChild(el('span',{text:'→'+e.revised_rpn,style:'font-size:10px;color:#4ade80;font-weight:700;'}));
+        }
+
+        var actCell = div(''); actCell.style.cssText='font-size:11px;max-width:160px;';
+        if (e.recommended_action) actCell.appendChild(el('div',{text:e.recommended_action,style:'color:#cbd5e1;margin-bottom:2px;'}));
+        if (e.responsible_party)  actCell.appendChild(el('div',{text:'→ '+e.responsible_party,style:'color:#64748b;'}));
+
+        var btnG = div('ops-btn-group');
+        btnG.appendChild(btn('ops-btn-sm','✏', function(){ showFmeaEntryForm(ws, e, function(){ viewFmeaWorksheet(id); }); }));
+        btnG.appendChild(btn('ops-btn-sm ops-btn-danger','✕', async function(){
+          if (!confirm('Delete this entry?')) return;
+          await API.fmea.destroyEntry(ws.id, e.id);
+          viewFmeaWorksheet(id);
+        }));
+
+        return [
+          i+1,
+          el('span',{text:e.function,style:'font-size:11px;max-width:120px;display:block;'}),
+          el('span',{text:e.failure_mode,style:'font-size:11px;max-width:120px;display:block;color:#fbbf24;'}),
+          el('span',{text:e.local_effect,style:'font-size:11px;max-width:120px;display:block;'}),
+          el('span',{text:e.system_effect,style:'font-size:11px;max-width:120px;display:block;color:#fb923c;'}),
+          el('span',{text:String(e.severity),    style:'font-weight:700;color:#f87171;'}),
+          el('span',{text:String(e.occurrence),  style:'font-weight:700;color:#fb923c;'}),
+          el('span',{text:String(e.detectability),style:'font-weight:700;color:#fbbf24;'}),
+          rpnCell,
+          actCell,
+          btnG,
+        ];
+      })
+    );
+    card.appendChild(tbl);
+  }
+
+  setContent(wrap);
+}
+
+// ── FMEA Entry form ───────────────────────────────────────────────────────
+async function showFmeaEntryForm(ws, existing, onSave) {
+  // Build failure mode options from the same static S5000F taxonomy used by deficiency forms
+  var fmOpts = [['','— None / Manual Entry —']];
+  FM_CATEGORIES.forEach(function(cat){
+    (FM_SUBCATEGORIES[cat[0]]||[]).forEach(function(sub){
+      fmOpts.push([cat[0]+': '+sub, cat[1].replace(/^[^ ]+ /,'')+' › '+sub]);
+    });
+  });
+
+  var fWrap = div('ops-form-grid');
+  function add(l,i,full,hint){ fWrap.appendChild(fg(l,i,full,hint)); return i; }
+
+  var fmSel = sel(fmOpts, existing?.failure_mode||'');
+  fWrap.appendChild(fg('Failure Mode Category (S5000F)', fmSel, true, 'Selecting auto-fills the Failure Mode field below.'));
+
+  var func  = add('Function *',        inp('What does this item do?',           existing?.function||''),        true);
+  var fm    = add('Failure Mode *',    inp('How can it fail?',                  existing?.failure_mode||''),    true);
+  var le    = add('Local Effect',      inp('Effect on the immediate function',  existing?.local_effect||''),    true);
+  var se    = add('System Effect',     inp('Effect on the overall system',      existing?.system_effect||''),   true);
+  var det   = add('Detection Method',  inp('How is failure detected?',         existing?.detection_method||''),true);
+
+  // Auto-fill failure mode field from taxonomy selection
+  fmSel.addEventListener('change', function(){
+    if (fmSel.value && !fm.value) {
+      fm.value = fmSel.value.split(': ').slice(1).join(': ');
+    }
+  });
+
+  // S / O / D sliders
+  var sodWrap = div(''); sodWrap.style.cssText='grid-column:span 2;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:4px;';
+  var rpnDisp = el('div',{text:'RPN: —',style:'grid-column:span 2;font-size:18px;font-weight:900;color:#38bdf8;text-align:center;padding:8px;'});
+
+  function makeSlider(label, dflt, color, hint) {
+    var g = div(''); g.style.cssText='display:flex;flex-direction:column;gap:4px;';
+    var lbl2 = el('div',{style:'font-size:10px;color:#64748b;text-transform:uppercase;'});
+    var valDisp = el('span',{text:String(dflt),style:'font-weight:900;font-size:16px;color:'+color+';margin-left:6px;'});
+    lbl2.textContent=label+' '; lbl2.appendChild(valDisp);
+    var sldr = document.createElement('input'); sldr.type='range'; sldr.min=1; sldr.max=10; sldr.value=dflt;
+    sldr.style.cssText='width:100%;accent-color:'+color+';';
+    sldr.addEventListener('input',function(){ valDisp.textContent=sldr.value; updateRpn(); });
+    g.appendChild(lbl2); g.appendChild(sldr);
+    if (hint) g.appendChild(el('div',{text:hint,style:'font-size:9px;color:#334155;'}));
+    return {g, sldr};
+  }
+
+  var sSldr = makeSlider('Severity (S)',      existing?.severity||5,      '#f87171', '1=No effect · 10=Safety/catastrophic');
+  var oSldr = makeSlider('Occurrence (O)',    existing?.occurrence||3,    '#fb923c', '1=Unlikely · 10=Certain');
+  var dSldr = makeSlider('Detectability (D)', existing?.detectability||3, '#fbbf24', '1=Always detected · 10=Undetectable');
+  sodWrap.appendChild(sSldr.g); sodWrap.appendChild(oSldr.g); sodWrap.appendChild(dSldr.g);
+
+  function updateRpn() {
+    var rpn = parseInt(sSldr.sldr.value) * parseInt(oSldr.sldr.value) * parseInt(dSldr.sldr.value);
+    rpnDisp.textContent = 'RPN: '+rpn+' — '+rpnLabel(rpn);
+    rpnDisp.style.color = rpnColor(rpn);
+  }
+  updateRpn();
+
+  fWrap.appendChild(sodWrap);
+  fWrap.appendChild(rpnDisp);
+
+  var recom = add('Recommended Action', inp('What should be done?',         existing?.recommended_action||''), true);
+  var resp  = add('Responsible Party',  inp('Who is responsible?',          existing?.responsible_party||''),  false);
+  var taken = add('Action Taken',       inp('What was actually done?',      existing?.action_taken||''),       true);
+  var notes = add('Notes',              inp('Additional notes',             existing?.notes||''),              true);
+
+  // Revised S/O/D if action has been taken
+  var revWrap = div(''); revWrap.style.cssText='grid-column:span 2;';
+  revWrap.appendChild(el('div',{text:'Revised RPN (after action — optional)',style:'font-size:10px;color:#64748b;text-transform:uppercase;margin-bottom:8px;'}));
+  var revGrid = div(''); revGrid.style.cssText='display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;';
+  var rsSldr = makeSlider('Revised S', existing?.revised_sev||existing?.severity||5, '#4ade80', '');
+  var roSldr = makeSlider('Revised O', existing?.revised_occ||existing?.occurrence||3,'#4ade80','');
+  var rdSldr = makeSlider('Revised D', existing?.revised_det||existing?.detectability||3,'#4ade80','');
+  var revRpnDisp = el('div',{style:'grid-column:span 3;font-size:13px;font-weight:700;color:#4ade80;text-align:center;'});
+  function updateRevRpn(){
+    var r=parseInt(rsSldr.sldr.value)*parseInt(roSldr.sldr.value)*parseInt(rdSldr.sldr.value);
+    revRpnDisp.textContent='Revised RPN: '+r+' ('+rpnLabel(r)+')';
+  }
+  [rsSldr,roSldr,rdSldr].forEach(function(s){s.sldr.addEventListener('input',updateRevRpn);});
+  updateRevRpn();
+  revGrid.appendChild(rsSldr.g); revGrid.appendChild(roSldr.g); revGrid.appendChild(rdSldr.g);
+  revGrid.appendChild(revRpnDisp);
+  revWrap.appendChild(revGrid);
+  fWrap.appendChild(revWrap);
+
+  modal(existing?'Edit FMEA Entry':'Add FMEA Entry', fWrap, async function(){
+    if (!func.value.trim()) throw new Error('Function is required.');
+    if (!fm.value.trim())   throw new Error('Failure Mode is required.');
+    var payload = {
+      function:           func.value.trim(),
+      failure_mode:       fm.value.trim(),
+      local_effect:       le.value.trim(),
+      system_effect:      se.value.trim(),
+      detection_method:   det.value.trim(),
+      severity:           parseInt(sSldr.sldr.value),
+      occurrence:         parseInt(oSldr.sldr.value),
+      detectability:      parseInt(dSldr.sldr.value),
+      failure_mode_id:    null,
+      recommended_action: recom.value.trim(),
+      responsible_party:  resp.value.trim(),
+      action_taken:       taken.value.trim(),
+      revised_sev:        rsSldr.sldr.value !== sSldr.sldr.value ? parseInt(rsSldr.sldr.value) : null,
+      revised_occ:        roSldr.sldr.value !== oSldr.sldr.value ? parseInt(roSldr.sldr.value) : null,
+      revised_det:        rdSldr.sldr.value !== dSldr.sldr.value ? parseInt(rdSldr.sldr.value) : null,
+      notes:              notes.value.trim(),
+    };
+    if (existing) {
+      await API.fmea.updateEntry(ws.id, existing.id, payload);
+    } else {
+      await API.fmea.createEntry(ws.id, payload);
+    }
+    if (onSave) onSave();
+  }, existing ? 'Save Changes' : 'Add Entry');
+}
+
+// ── FMEA Publish form ────────────────────────────────────────────────────
+function showFmeaPublishForm(ws, onDone) {
+  var fWrap = div('ops-form-grid');
+  function add(l,i,full,hint){ fWrap.appendChild(fg(l,i,full,hint)); return i; }
+  var rev  = add('Revision *', inp('A, B, C…', 'A'));
+  var desc = add('Change Description *', inp('e.g. Initial FMEA baseline', ''), true);
+  var appr = add('Approved By', inp('Name or UID', ''));
+
+  modal('Publish FMEA Worksheet', fWrap, async function(){
+    if (!rev.value.trim())  throw new Error('Revision required.');
+    if (!desc.value.trim()) throw new Error('Change description required.');
+    var result = await API.fmea.publishWorksheet(ws.id, {
+      revision:    rev.value.trim(),
+      change_desc: desc.value.trim(),
+      approved_by: appr.value.trim() || null,
+    });
+    var conf = div('');
+    conf.style.cssText='background:#0f172a;border:1px solid #166534;border-radius:8px;padding:16px 20px;';
+    conf.appendChild(el('div',{text:'✓ FMEA Worksheet Published',style:'color:#4ade80;font-weight:800;font-size:14px;margin-bottom:8px;'}));
+    conf.appendChild(el('div',{text:'Document: '+result.document.doc_number,style:'font-family:monospace;color:#38bdf8;margin-bottom:3px;'}));
+    conf.appendChild(el('div',{text:'Rev: '+result.revision.revision,style:'color:#e2e8f0;'}));
+    modal('Published', conf, null, null, true);
+    if (onDone) onDone();
+  }, 'Publish');
+}
+
+// ── FMEA printable report ────────────────────────────────────────────────
+function openFmeaReport(ws, entries) {
+  var sorted = entries.slice().sort(function(a,b){return b.rpn-a.rpn;});
+  var entryRows = sorted.map(function(e,i){
+    var c=e.rpn>=200?'#f87171':e.rpn>=100?'#fb923c':e.rpn>=40?'#cc8800':'#166534';
+    var revCell=e.revised_rpn?'<td style="font-family:monospace;font-weight:700;color:#4ade80;">'+e.revised_rpn+'</td>':'<td style="color:#64748b;">—</td>';
+    return '<tr>'
+      +'<td>'+(i+1)+'</td>'
+      +'<td>'+e.function+'</td>'
+      +'<td style="color:#fbbf24;">'+e.failure_mode+'</td>'
+      +'<td>'+e.local_effect+'</td>'
+      +'<td style="color:#fb923c;">'+e.system_effect+'</td>'
+      +'<td style="font-family:monospace;font-weight:700;color:#c00;">'+e.severity+'</td>'
+      +'<td style="font-family:monospace;font-weight:700;color:#c60;">'+e.occurrence+'</td>'
+      +'<td style="font-family:monospace;font-weight:700;color:#880;">'+e.detectability+'</td>'
+      +'<td style="font-family:monospace;font-weight:900;color:'+c+';">'+e.rpn+'</td>'
+      +revCell
+      +'<td>'+e.recommended_action+'</td>'
+      +'<td>'+e.responsible_party+'</td>'
+      +'<td>'+e.detection_method+'</td>'
+      +'</tr>';
+  }).join('');
+
+  var critCount=entries.filter(function(e){return e.rpn>=200;}).length;
+  var highCount=entries.filter(function(e){return e.rpn>=100&&e.rpn<200;}).length;
+  var maxRpn=entries.length?Math.max.apply(null,entries.map(function(e){return e.rpn;})):0;
+
+  var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>FMEA — '+ws.title+'</title>'
+    +'<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;font-size:10px;color:#1e293b;background:#fff;padding:16px;}'
+    +'h1{font-size:16px;font-weight:900;margin-bottom:4px;}h2{font-size:12px;font-weight:700;margin:16px 0 6px;color:#334155;border-bottom:1px solid #e2e8f0;padding-bottom:4px;}'
+    +'.meta{color:#64748b;font-size:10px;margin-bottom:16px;}'
+    +'.kpi{display:flex;gap:12px;margin-bottom:16px;}'
+    +'.kpi-box{border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;text-align:center;min-width:80px;}'
+    +'.kpi-val{font-size:18px;font-weight:900;} .kpi-lbl{font-size:9px;color:#64748b;text-transform:uppercase;}'
+    +'table{width:100%;border-collapse:collapse;font-size:9px;}'
+    +'th{background:#1e293b;color:#fff;padding:4px 6px;text-align:left;white-space:nowrap;}'
+    +'td{padding:4px 6px;border-bottom:1px solid #e2e8f0;vertical-align:top;}'
+    +'tr:nth-child(even) td{background:#f8fafc;}'
+    +'.no-print{display:none;}'
+    +'@media print{.no-print{display:none!important;}.toolbar{display:none!important;}}'
+    +'.toolbar{background:#1e293b;color:#fff;padding:8px 14px;display:flex;align-items:center;gap:10px;margin-bottom:14px;border-radius:6px;}'
+    +'.toolbar button{background:#38bdf8;color:#000;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;font-weight:700;}'
+    +'</style></head><body>'
+    +'<div class="toolbar no-print"><strong>FMEA Report</strong><button onclick="window.print()">🖨 Print / PDF</button></div>'
+    +'<h1>'+ws.title+'</h1>'
+    +'<div class="meta">Status: '+ws.status+' · Entries: '+entries.length+' · Generated: '+new Date().toISOString().slice(0,10)+'</div>'
+    +'<div class="kpi">'
+      +'<div class="kpi-box"><div class="kpi-val" style="color:#f87171;">'+critCount+'</div><div class="kpi-lbl">Critical (≥200)</div></div>'
+      +'<div class="kpi-box"><div class="kpi-val" style="color:#fb923c;">'+highCount+'</div><div class="kpi-lbl">High (100–199)</div></div>'
+      +'<div class="kpi-box"><div class="kpi-val" style="color:#1d4ed8;">'+entries.length+'</div><div class="kpi-lbl">Total Entries</div></div>'
+      +'<div class="kpi-box"><div class="kpi-val" style="color:'+(maxRpn>=200?'#f87171':maxRpn>=100?'#fb923c':'#1d4ed8')+';">'+maxRpn+'</div><div class="kpi-lbl">Max RPN</div></div>'
+    +'</div>'
+    +'<h2>Failure Mode Analysis (sorted by RPN descending)</h2>'
+    +'<table><thead><tr><th>#</th><th>Function</th><th>Failure Mode</th><th>Local Effect</th><th>System Effect</th>'
+    +'<th>S</th><th>O</th><th>D</th><th>RPN</th><th>Rev RPN</th>'
+    +'<th>Recommended Action</th><th>Responsible</th><th>Detection Method</th></tr></thead>'
+    +'<tbody>'+entryRows+'</tbody></table>'
+    +'</body></html>';
+
+  var win=window.open('','_blank');
+  if (win){ win.document.write(html); win.document.close(); }
+  else alert('Pop-up blocked — allow pop-ups to view the FMEA report.');
 }
 
 function showCanvasForm(existing, onSave) {
@@ -10622,6 +10951,7 @@ async function dispatch(route, param) {
     else if (route==='modernizations') await viewModernizations();
     else if (route==='canvases')        await viewCanvases();
     else if (route==='canvas-detail')   await viewCanvasDetail(parseInt(param));
+    else if (route==='fmea-worksheet')  await viewFmeaWorksheet(parseInt(param));
     else if (route==='avail-projects')  await viewAvailProjects();
     else if (route==='work-packages')   await viewWorkPackages();
     else if (route==='wp-detail')       await viewWorkPackageDetail(parseInt(param));

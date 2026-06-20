@@ -185,6 +185,18 @@ return [
         ['name' => 'canvas#status',  'url' => '/api/canvases/{id}/status',  'verb' => 'GET'],
         ['name' => 'canvas#publish', 'url' => '/api/canvases/{id}/publish', 'verb' => 'POST'],
 
+        // ── FMEA ──────────────────────────────────────────────────
+        ['name' => 'fmea#index_worksheets',   'url' => '/api/fmea/worksheets',                                   'verb' => 'GET'],
+        ['name' => 'fmea#find_or_create',     'url' => '/api/fmea/worksheets/find-or-create',                    'verb' => 'POST'],
+        ['name' => 'fmea#show_worksheet',     'url' => '/api/fmea/worksheets/{id}',                              'verb' => 'GET'],
+        ['name' => 'fmea#update_worksheet',   'url' => '/api/fmea/worksheets/{id}',                              'verb' => 'PUT'],
+        ['name' => 'fmea#destroy_worksheet',  'url' => '/api/fmea/worksheets/{id}',                              'verb' => 'DELETE'],
+        ['name' => 'fmea#publish_worksheet',  'url' => '/api/fmea/worksheets/{id}/publish',                      'verb' => 'POST'],
+        ['name' => 'fmea#index_entries',      'url' => '/api/fmea/worksheets/{worksheetId}/entries',             'verb' => 'GET'],
+        ['name' => 'fmea#create_entry',       'url' => '/api/fmea/worksheets/{worksheetId}/entries',             'verb' => 'POST'],
+        ['name' => 'fmea#update_entry',       'url' => '/api/fmea/worksheets/{worksheetId}/entries/{entryId}',   'verb' => 'PUT'],
+        ['name' => 'fmea#destroy_entry',      'url' => '/api/fmea/worksheets/{worksheetId}/entries/{entryId}',   'verb' => 'DELETE'],
+
         // ── Component Library ─────────────────────────────────────
         ['name' => 'component_library#index',   'url' => '/api/component-library',      'verb' => 'GET'],
         ['name' => 'component_library#show',    'url' => '/api/component-library/{id}', 'verb' => 'GET'],

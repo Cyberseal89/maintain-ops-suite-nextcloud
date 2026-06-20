@@ -5,6 +5,7 @@ namespace OCA\OpsSuite\Controller;
 
 use OCA\OpsSuite\Db\Deficiency;
 use OCA\OpsSuite\Db\DeficiencyMapper;
+use OCA\OpsSuite\Db\FmeaEntryMapper;
 use OCA\OpsSuite\Db\SupplyRequestMapper;
 use OCA\OpsSuite\Db\SupplyRequestItemMapper;
 use OCA\OpsSuite\Db\DeficiencyHistory;
@@ -24,6 +25,7 @@ class DeficiencyController extends Controller {
         private readonly SupplyRequestItemMapper $supplyItemMapper,
         private readonly DeficiencyMapper        $mapper,
         private readonly DeficiencyHistoryMapper $historyMapper,
+        private readonly FmeaEntryMapper         $fmeaEntryMapper,
         private readonly IUserSession            $userSession
     ) {
         parent::__construct($appName, $request);
@@ -99,6 +101,11 @@ class DeficiencyController extends Controller {
 
         // Auto-create the opening history entry
         $this->addHistory($created->getId(), 'Deficiency opened.', $uid, $now);
+
+        // FMEA: increment occurrence on any entries linked to this failure mode
+        if ($created->getFailureModeId()) {
+            $this->fmeaEntryMapper->incrementOccurrenceForFailureMode($created->getFailureModeId());
+        }
 
         return new DataResponse($created->jsonSerialize(), Http::STATUS_CREATED);
     }
