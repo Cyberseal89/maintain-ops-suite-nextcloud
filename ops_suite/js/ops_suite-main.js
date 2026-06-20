@@ -1,5 +1,5 @@
 /**
- * OpsSuite v3.17.2
+ * OpsSuite v3.17.3
  * Sprint 0A/0B: shops, asset coding (TYPE-SHOP-POSITION), criticality,
  * readiness engine, local_uuid offline sync foundation.
  */
@@ -7670,8 +7670,12 @@ async function viewCanvases() {
 
 async function viewCanvasDetail(id) {
   setContent(el('div',{cls:'ops-empty',text:'Loading…'}));
-  var canvas = await API.canvases.get(id).catch(()=>null);
+  var [canvas, allAssets] = await Promise.all([
+    API.canvases.get(id).catch(()=>null),
+    getAssets().catch(()=>[])
+  ]);
   if (!canvas) { setContent(el('div',{cls:'ops-empty',text:'Canvas not found.'})); return; }
+  var assetById = {}; allAssets.forEach(function(a){ assetById[a.id]=a; });
 
   var wrap = div('');
   var hdr  = div('ops-page-header');
@@ -7696,7 +7700,22 @@ async function viewCanvasDetail(id) {
   var cd = JSON.parse(canvas.canvas_data || '{"nodes":[],"edges":[]}');
   var nodes = cd.nodes || [];
   var edges = cd.edges || [];
-  canvas._nodeCache = nodes; // live reference so publish modal can read current nodes
+  canvas._nodeCache = nodes;
+
+  // Enrich nodes that have an asset_id but are missing human-readable fields
+  // (covers nodes created before this sprint or with the old plain-label form)
+  nodes.forEach(function(node) {
+    if (!node.asset_id) return;
+    var a = assetById[node.asset_id] || assetById[String(node.asset_id)];
+    if (!a) return;
+    if (!node.asset_name || node.asset_name === node.label) node.asset_name = a.name || node.asset_name;
+    if (!node.asset_code)   node.asset_code   = a.asset_id_label || '';
+    if (!node.manufacturer) node.manufacturer = a.manufacturer   || '';
+    if (!node.model_number) node.model_number = a.model          || '';
+    if (!node.nsn)          node.nsn          = a.nsn            || a.part_number || '';
+    if (!node.cage_code)    node.cage_code    = a.cage_code      || '';
+    if (!node.criticality)  node.criticality  = a.criticality    || null;
+  });
 
   // Connection types: [id, label, color, dash-pattern]
   var CONN_TYPES = [
