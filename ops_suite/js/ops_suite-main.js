@@ -1,5 +1,5 @@
 /**
- * OpsSuite v3.17.1
+ * OpsSuite v3.17.2
  * Sprint 0A/0B: shops, asset coding (TYPE-SHOP-POSITION), criticality,
  * readiness engine, local_uuid offline sync foundation.
  */
@@ -7562,34 +7562,80 @@ async function viewCanvases() {
 
     if (activeTab === 'canvases') {
       hdrBtn.appendChild(btn('primary','+ New Canvas',()=>showCanvasForm(null,renderCanvasTab)));
-      var canvases = await API.canvases.list(_selectedPlatformIds.length?{platform_id:_selectedPlatformIds[0]}:{}).catch(()=>[]);
+
+      var [canvases, allAssets] = await Promise.all([
+        API.canvases.list(_selectedPlatformIds.length?{platform_id:_selectedPlatformIds[0]}:{}).catch(()=>[]),
+        getAssets().catch(()=>[])
+      ]);
+      var assetMap = {}; allAssets.forEach(function(a){assetMap[a.id]=a;});
+
       if (!canvases.length) { body.appendChild(el('p',{cls:'ops-empty',text:'No canvases yet. Create one to start drawing your system.'})); return; }
-      var card = div('ops-card'); body.appendChild(card);
-      card.appendChild(makeTable(
-        ['Name','Type','Version','Live Sync','System Asset','Updated',''],
-        canvases.map(c => {
-          var typeLabel = CANVAS_TYPES.find(t=>t[0]===c.canvas_type)?.[1] || c.canvas_type;
-          var viewB = btn('ops-btn-sm','👁 Open',()=>navigate('canvas-detail',c.id));
-          var editB = btn('ops-btn-sm','✏',()=>showCanvasForm(c,viewCanvases));
-          var delB  = btn('ops-btn-sm ops-btn-danger','✕',async()=>{
-            if (!confirm('Delete canvas "'+c.name+'"?')) return;
-            await API.canvases.destroy(c.id); renderCanvasTab();
-          });
-          var g = div('ops-btn-group'); g.appendChild(viewB); g.appendChild(editB); g.appendChild(delB);
-          var nameCell = div('');
-          nameCell.appendChild(el('strong',{text:c.name,style:'cursor:pointer;color:#38bdf8;',onclick:()=>navigate('canvas-detail',c.id)}));
-          if (c.revision_required) { nameCell.appendChild(document.createTextNode(' ')); nameCell.appendChild(span('ops-badge badge-orange','⚠ Rev Required')); }
-          return [
-            nameCell,
-            span('ops-badge badge-blue',typeLabel),
-            c.published_rev ? span('ops-mono ops-small','Rev '+c.published_rev) : span('ops-muted','Unpublished'),
-            c.is_live ? span('ops-badge badge-green','Live') : span('ops-badge badge-gray','Static'),
-            c.system_asset_id ? span('ops-tag','Asset #'+c.system_asset_id) : span('ops-muted','—'),
-            c.updated_at ? c.updated_at.slice(0,10) : '—',
-            g
-          ];
-        })
-      ));
+
+      // Layer tabs — group by canvas_type
+      var layerOrder = ['network','power','rf','hvac','physical','custom'];
+      var presentTypes = [];
+      layerOrder.forEach(function(lt){ if (canvases.find(function(c){return c.canvas_type===lt;})) presentTypes.push(lt); });
+      canvases.forEach(function(c){ if (!layerOrder.includes(c.canvas_type)&&!presentTypes.includes(c.canvas_type)) presentTypes.push(c.canvas_type); });
+
+      var activeLayer = presentTypes[0] || 'custom';
+      var layerTabBar = div(''); layerTabBar.style.cssText='display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap;';
+
+      var tableArea = div(''); body.appendChild(layerTabBar); body.appendChild(tableArea);
+
+      function renderLayer(lt) {
+        activeLayer = lt;
+        layerTabBar.querySelectorAll('button').forEach(function(b){
+          b.style.background=b.dataset.lt===lt?'#1e4d7b':'';
+          b.style.color=b.dataset.lt===lt?'#e2e8f0':'#64748b';
+        });
+        tableArea.innerHTML='';
+
+        var layerCanvases = canvases.filter(function(c){return c.canvas_type===lt;});
+        if (!layerCanvases.length) {
+          tableArea.appendChild(el('p',{cls:'ops-empty',text:'No canvases for this layer.'}));
+          return;
+        }
+        var card = div('ops-card'); tableArea.appendChild(card);
+        card.appendChild(makeTable(
+          ['Name','Rev','System Asset','Status','Updated',''],
+          layerCanvases.map(function(c) {
+            var viewB = btn('ops-btn-sm','👁 Open',function(){navigate('canvas-detail',c.id);});
+            var editB = btn('ops-btn-sm','✏',function(){showCanvasForm(c,renderCanvasTab);});
+            var delB  = btn('ops-btn-sm ops-btn-danger','✕',async function(){
+              if (!confirm('Delete canvas "'+c.name+'"?')) return;
+              await API.canvases.destroy(c.id); renderCanvasTab();
+            });
+            var g = div('ops-btn-group'); g.appendChild(viewB); g.appendChild(editB); g.appendChild(delB);
+            var nameCell = div('');
+            nameCell.appendChild(el('strong',{text:c.name,style:'cursor:pointer;color:#38bdf8;',onclick:function(){navigate('canvas-detail',c.id);}}));
+            if (c.revision_required) { nameCell.appendChild(document.createTextNode(' ')); nameCell.appendChild(span('ops-badge badge-orange','⚠ Rev Req')); }
+            var sysAsset = c.system_asset_id ? assetMap[c.system_asset_id] : null;
+            var sysCell = sysAsset ? el('span',{text:sysAsset.name,style:'font-size:12px;color:#cbd5e1;'}) : span('ops-muted','—');
+            var statusCell = div(''); statusCell.style.cssText='display:flex;gap:4px;flex-wrap:wrap;';
+            statusCell.appendChild(c.is_live ? span('ops-badge badge-green','Live') : span('ops-badge badge-gray','Static'));
+            if (c.drawing_doc_id) statusCell.appendChild(span('ops-badge badge-blue','Published'));
+            return [
+              nameCell,
+              c.published_rev ? span('ops-mono ops-small',c.published_rev) : span('ops-muted','—'),
+              sysCell,
+              statusCell,
+              c.updated_at ? c.updated_at.slice(0,10) : '—',
+              g
+            ];
+          })
+        ));
+      }
+
+      presentTypes.forEach(function(lt){
+        var typeLabel = CANVAS_TYPES.find(function(t){return t[0]===lt;})?.[1] || lt;
+        var count = canvases.filter(function(c){return c.canvas_type===lt;}).length;
+        var tb = btn('ops-btn-sm', typeLabel+' ('+count+')', function(){renderLayer(lt);});
+        tb.dataset.lt=lt;
+        tb.style.cssText='transition:background .15s;color:#64748b;';
+        layerTabBar.appendChild(tb);
+      });
+
+      renderLayer(activeLayer);
 
     } else {
       hdrBtn.appendChild(btn('primary','+ New Component',()=>showComponentLibForm(null,renderCanvasTab)));
@@ -7652,6 +7698,22 @@ async function viewCanvasDetail(id) {
   var edges = cd.edges || [];
   canvas._nodeCache = nodes; // live reference so publish modal can read current nodes
 
+  // Connection types: [id, label, color, dash-pattern]
+  var CONN_TYPES = [
+    ['fiber',      'Fiber Optic',    '#f97316', '8,3'],
+    ['ethernet',   'Ethernet / Cat', '#4ade80', ''],
+    ['coax',       'Coaxial',        '#fbbf24', '3,3'],
+    ['serial_232', 'RS-232 Serial',  '#a78bfa', '6,2'],
+    ['serial_485', 'RS-485 Serial',  '#c4b5fd', '4,2'],
+    ['power_ac',   'Power (AC)',     '#f87171', ''],
+    ['power_dc',   'Power (DC)',     '#60a5fa', ''],
+    ['waveguide',  'Waveguide',      '#22d3ee', '2,4'],
+    ['optical',    'Optical',        '#f472b6', '5,2'],
+    ['can_bus',    'CAN Bus',        '#fb923c', '3,2'],
+    ['other',      'Other',          '#94a3b8', ''],
+  ];
+  var CONN_MAP = {}; CONN_TYPES.forEach(function(c){CONN_MAP[c[0]]=c;});
+
   // Editor state
   var selId      = null;
   var edgeMode   = false;
@@ -7682,11 +7744,20 @@ async function viewCanvasDetail(id) {
   // Legend
   var legend = div('');
   legend.style.cssText='display:flex;gap:10px;align-items:center;margin-left:auto;flex-wrap:wrap;';
-  [['#4ade80','Healthy'],['#fbbf24','Overdue'],['#fb923c','Deficiency'],['#f87171','Critical'],['#f97316','LOTO']].forEach(function(c){
+  [['#4ade80','Healthy'],['#fbbf24','Overdue'],['#fb923c','Def'],['#f87171','Critical'],['#f97316','LOTO']].forEach(function(c){
     var dot=div(''); dot.style.cssText='width:9px;height:9px;border-radius:50%;background:'+c[0]+';flex-shrink:0;';
     var lbl=el('span',{text:c[1],style:'color:#475569;font-size:10px;'});
     var g2=div(''); g2.style.cssText='display:flex;align-items:center;gap:3px;'; g2.appendChild(dot); g2.appendChild(lbl);
     legend.appendChild(g2);
+  });
+  // Connection type line swatches
+  var sep=el('span',{text:'|',style:'color:#2e3650;'});
+  legend.appendChild(sep);
+  CONN_TYPES.forEach(function(ct){
+    var swatch=div(''); swatch.style.cssText='width:18px;height:3px;background:'+ct[2]+';border-radius:2px;flex-shrink:0;';
+    var lbl2=el('span',{text:ct[1].split(' ')[0],style:'color:#475569;font-size:9px;'});
+    var g3=div(''); g3.style.cssText='display:flex;align-items:center;gap:3px;'; g3.appendChild(swatch); g3.appendChild(lbl2);
+    legend.appendChild(g3);
   });
 
   [addNodeBtn,edgeModeBtn,delBtn,saveBtn,syncBtn,statusBtn,legend].forEach(function(b){ toolbar.appendChild(b); });
@@ -7719,40 +7790,81 @@ async function viewCanvasDetail(id) {
   function render() {
     gRoot.innerHTML='';
 
-    // Arrowhead marker
+    // Arrowhead markers — one per connection type color
     var defs=document.createElementNS(NS,'defs');
-    var marker=document.createElementNS(NS,'marker');
-    marker.setAttribute('id','cvs-arrow'); marker.setAttribute('markerWidth','8'); marker.setAttribute('markerHeight','6');
-    marker.setAttribute('refX','7'); marker.setAttribute('refY','3'); marker.setAttribute('orient','auto');
-    var poly=document.createElementNS(NS,'polygon');
-    poly.setAttribute('points','0 0,8 3,0 6'); poly.setAttribute('fill','#334155');
-    marker.appendChild(poly); defs.appendChild(marker); gRoot.appendChild(defs);
+    CONN_TYPES.forEach(function(ct){
+      var mid=document.createElementNS(NS,'marker');
+      mid.setAttribute('id','cvs-arr-'+ct[0]);
+      mid.setAttribute('markerWidth','8'); mid.setAttribute('markerHeight','6');
+      mid.setAttribute('refX','7'); mid.setAttribute('refY','3'); mid.setAttribute('orient','auto');
+      var poly=document.createElementNS(NS,'polygon');
+      poly.setAttribute('points','0 0,8 3,0 6'); poly.setAttribute('fill',ct[2]);
+      mid.appendChild(poly); defs.appendChild(mid);
+    });
+    // Fallback gray arrow
+    var defMark=document.createElementNS(NS,'marker');
+    defMark.setAttribute('id','cvs-arr-default'); defMark.setAttribute('markerWidth','8'); defMark.setAttribute('markerHeight','6');
+    defMark.setAttribute('refX','7'); defMark.setAttribute('refY','3'); defMark.setAttribute('orient','auto');
+    var defPoly=document.createElementNS(NS,'polygon');
+    defPoly.setAttribute('points','0 0,8 3,0 6'); defPoly.setAttribute('fill','#334155');
+    defMark.appendChild(defPoly); defs.appendChild(defMark);
+    gRoot.appendChild(defs);
 
     // Edges
     edges.forEach(function(edge) {
       var src=nodes.find(function(n){return n.id===edge.from;});
       var dst=nodes.find(function(n){return n.id===edge.to;});
       if (!src||!dst) return;
-      var x1=src.x+(src.w||140)/2, y1=src.y+(src.h||44)/2;
-      var x2=dst.x+(dst.w||140)/2, y2=dst.y+(dst.h||44)/2;
-      var line=document.createElementNS(NS,'line');
-      line.setAttribute('x1',x1); line.setAttribute('y1',y1);
-      line.setAttribute('x2',x2); line.setAttribute('y2',y2);
-      line.setAttribute('stroke','#2e3650'); line.setAttribute('stroke-width','2');
-      line.setAttribute('marker-end','url(#cvs-arrow)');
-      line.style.cursor='pointer';
-      line.addEventListener('click',function(e){
+      var x1=src.x+(src.w||150)/2, y1=src.y+(src.h||60)/2;
+      var x2=dst.x+(dst.w||150)/2, y2=dst.y+(dst.h||60)/2;
+
+      var ct=edge.conn_type ? CONN_MAP[edge.conn_type] : null;
+      var strokeColor = ct ? ct[2] : '#334155';
+      var dashArray   = ct && ct[3] ? ct[3] : '';
+      var markerId    = ct ? 'cvs-arr-'+ct[0] : 'cvs-arr-default';
+
+      // Hit-target (wider invisible line)
+      var hit=document.createElementNS(NS,'line');
+      hit.setAttribute('x1',x1); hit.setAttribute('y1',y1);
+      hit.setAttribute('x2',x2); hit.setAttribute('y2',y2);
+      hit.setAttribute('stroke','transparent'); hit.setAttribute('stroke-width','10');
+      hit.style.cursor='pointer';
+      hit.addEventListener('click',function(e){
         e.stopPropagation();
-        if (confirm('Delete this connection?')) {
+        var typeLabel = ct ? ct[1] : 'Untyped';
+        if (confirm('Connection: '+typeLabel+(edge.label?' ('+edge.label+')':'')+'\n\nDelete this connection?')) {
           edges=edges.filter(function(ed){return ed!==edge;}); dirty=true; render();
         }
       });
+      gRoot.appendChild(hit);
+
+      var line=document.createElementNS(NS,'line');
+      line.setAttribute('x1',x1); line.setAttribute('y1',y1);
+      line.setAttribute('x2',x2); line.setAttribute('y2',y2);
+      line.setAttribute('stroke',strokeColor); line.setAttribute('stroke-width','2');
+      if (dashArray) line.setAttribute('stroke-dasharray',dashArray);
+      line.setAttribute('marker-end','url(#'+markerId+')');
+      line.setAttribute('pointer-events','none');
       gRoot.appendChild(line);
-      if (edge.label) {
+
+      // Mid-point label: type abbreviation + optional label
+      var mx=(x1+x2)/2, my=(y1+y2)/2;
+      var abbr = ct ? ct[1].split(' ')[0].toUpperCase().slice(0,4) : '';
+      var midText = [abbr, edge.label].filter(Boolean).join(' · ');
+      if (midText) {
+        var bg=document.createElementNS(NS,'rect');
+        var textW=midText.length*5+8;
+        bg.setAttribute('x',mx-textW/2); bg.setAttribute('y',my-9);
+        bg.setAttribute('width',textW); bg.setAttribute('height',13);
+        bg.setAttribute('fill','#0d1117'); bg.setAttribute('rx','3');
+        bg.setAttribute('pointer-events','none');
+        gRoot.appendChild(bg);
         var lt=document.createElementNS(NS,'text');
-        lt.setAttribute('x',(x1+x2)/2); lt.setAttribute('y',(y1+y2)/2-6);
-        lt.setAttribute('text-anchor','middle'); lt.setAttribute('font-size','9');
-        lt.setAttribute('fill','#475569'); lt.textContent=edge.label;
+        lt.setAttribute('x',mx); lt.setAttribute('y',my);
+        lt.setAttribute('text-anchor','middle'); lt.setAttribute('dominant-baseline','middle');
+        lt.setAttribute('font-size','8'); lt.setAttribute('fill',strokeColor);
+        lt.setAttribute('pointer-events','none'); lt.setAttribute('font-weight','700');
+        lt.textContent=midText;
         gRoot.appendChild(lt);
       }
     });
@@ -7787,32 +7899,32 @@ async function viewCanvasDetail(id) {
       rect.setAttribute('stroke',borderColor); rect.setAttribute('stroke-width',borderWidth);
       ng.appendChild(rect);
 
-      // Divider line between code and name
-      var divL=document.createElementNS(NS,'line');
-      divL.setAttribute('x1',node.x+1); divL.setAttribute('y1',node.y+22);
-      divL.setAttribute('x2',node.x+nw-1); divL.setAttribute('y2',node.y+22);
-      divL.setAttribute('stroke','#1e2540'); divL.setAttribute('stroke-width','1');
-      ng.appendChild(divL);
-
-      // Line 1: asset code (or type label if no asset)
-      var codeLine=node.asset_code||node.label||'';
-      var codeT=document.createElementNS(NS,'text');
-      codeT.setAttribute('x',node.x+nw/2); codeT.setAttribute('y',node.y+13);
-      codeT.setAttribute('text-anchor','middle'); codeT.setAttribute('dominant-baseline','middle');
-      codeT.setAttribute('font-size','9'); codeT.setAttribute('font-family','monospace');
-      codeT.setAttribute('fill','#38bdf8'); codeT.setAttribute('pointer-events','none');
-      codeT.textContent=codeLine.length>20?codeLine.slice(0,19)+'…':codeLine;
-      ng.appendChild(codeT);
-
-      // Line 2: asset name (larger)
-      var nameLine=node.asset_name||node.label||'';
+      // Line 1: asset name (the primary identity — what the thing IS)
+      var nameLine = node.asset_name || node.label || '';
       var nameT=document.createElementNS(NS,'text');
-      nameT.setAttribute('x',node.x+nw/2); nameT.setAttribute('y',node.y+40);
+      nameT.setAttribute('x',node.x+nw/2); nameT.setAttribute('y',node.y+20);
       nameT.setAttribute('text-anchor','middle'); nameT.setAttribute('dominant-baseline','middle');
-      nameT.setAttribute('font-size','11'); nameT.setAttribute('fill','#e2e8f0');
-      nameT.setAttribute('pointer-events','none');
-      nameT.textContent=nameLine.length>18?nameLine.slice(0,17)+'…':nameLine;
+      nameT.setAttribute('font-size','11'); nameT.setAttribute('font-weight','700');
+      nameT.setAttribute('fill','#e2e8f0'); nameT.setAttribute('pointer-events','none');
+      nameT.textContent=nameLine.length>20?nameLine.slice(0,19)+'…':nameLine;
       ng.appendChild(nameT);
+
+      // Line 2: manufacturer + model (falls back gracefully)
+      var modelLine = [node.manufacturer, node.model_number].filter(Boolean).join(' · ') || node.asset_code || '';
+      if (modelLine) {
+        var divL=document.createElementNS(NS,'line');
+        divL.setAttribute('x1',node.x+8); divL.setAttribute('y1',node.y+32);
+        divL.setAttribute('x2',node.x+nw-8); divL.setAttribute('y2',node.y+32);
+        divL.setAttribute('stroke','#1e2540'); divL.setAttribute('stroke-width','1');
+        ng.appendChild(divL);
+        var modelT=document.createElementNS(NS,'text');
+        modelT.setAttribute('x',node.x+nw/2); modelT.setAttribute('y',node.y+46);
+        modelT.setAttribute('text-anchor','middle'); modelT.setAttribute('dominant-baseline','middle');
+        modelT.setAttribute('font-size','8'); modelT.setAttribute('fill','#64748b');
+        modelT.setAttribute('pointer-events','none');
+        modelT.textContent=modelLine.length>22?modelLine.slice(0,21)+'…':modelLine;
+        ng.appendChild(modelT);
+      }
 
       // Criticality dot top-left
       if (node.criticality && CRIT_COLORS[node.criticality]) {
@@ -7858,8 +7970,32 @@ async function viewCanvasDetail(id) {
         if (edgeMode) {
           if (!edgeSrc) { edgeSrc=node.id; render(); }
           else if (edgeSrc!==node.id) {
-            edges.push({id:'e'+Date.now(),from:edgeSrc,to:node.id,label:''});
-            edgeSrc=null; dirty=true; render();
+            var fromId=edgeSrc, toId=node.id;
+            edgeSrc=null; render();
+            // Connection type modal
+            var eWrap=div('');
+            eWrap.style.cssText='display:flex;flex-direction:column;gap:12px;';
+            var fromNode=nodes.find(function(n){return n.id===fromId;});
+            var toNode=nodes.find(function(n){return n.id===toId;});
+            eWrap.appendChild(el('div',{
+              text:(fromNode?fromNode.asset_name||fromNode.label:'?')+' → '+(toNode?toNode.asset_name||toNode.label:'?'),
+              style:'color:#94a3b8;font-size:12px;border-bottom:1px solid #2e3650;padding-bottom:8px;'
+            }));
+            var ctOpts=CONN_TYPES.map(function(c){return [c[0],c[1]];});
+            var ctSel=sel(ctOpts,'ethernet');
+            var lbl2=inp('Optional description / signal name','');
+            eWrap.appendChild(fg('Connection Type *',ctSel));
+            eWrap.appendChild(fg('Label (optional)',lbl2));
+            // Color preview strip
+            var preview=div(''); preview.style.cssText='height:4px;border-radius:2px;margin-top:-4px;background:'+CONN_MAP[ctSel.value][2]+';';
+            eWrap.appendChild(preview);
+            ctSel.addEventListener('change',function(){
+              preview.style.background=CONN_MAP[ctSel.value]?CONN_MAP[ctSel.value][2]:'#334155';
+            });
+            modal('Add Connection', eWrap, function(){
+              edges.push({id:'e'+Date.now(),from:fromId,to:toId,conn_type:ctSel.value,label:lbl2.value.trim()});
+              dirty=true; render();
+            }, 'Add Connection');
           }
           return;
         }
@@ -8002,23 +8138,31 @@ async function viewCanvasDetail(id) {
       if (selected) {
         nodes.push({
           id:'n'+Date.now(),
-          label:      selected.asset_id_label||selected.name,
-          asset_code: selected.asset_id_label||'',
-          asset_name: selected.name||'',
-          asset_id:   selected.id,
-          criticality:selected.criticality||null,
-          type:       selected.asset_type||'hardware',
+          label:        selected.asset_id_label||selected.name,
+          asset_code:   selected.asset_id_label||'',
+          asset_name:   selected.name||'',
+          asset_id:     selected.id,
+          criticality:  selected.criticality||null,
+          type:         selected.asset_type||'hardware',
+          manufacturer: selected.manufacturer||'',
+          model_number: selected.model||'',
+          nsn:          selected.nsn||selected.part_number||'',
+          cage_code:    selected.cage_code||'',
           x:nx, y:ny, w:150, h:60
         });
       } else if (manLbl.value.trim()) {
         nodes.push({
           id:'n'+Date.now(),
-          label:      manLbl.value.trim(),
-          asset_code: '',
-          asset_name: manLbl.value.trim(),
-          asset_id:   null,
-          criticality:null,
-          type:       manTyp.value,
+          label:        manLbl.value.trim(),
+          asset_code:   '',
+          asset_name:   manLbl.value.trim(),
+          asset_id:     null,
+          criticality:  null,
+          type:         manTyp.value,
+          manufacturer: '',
+          model_number: '',
+          nsn:          '',
+          cage_code:    '',
           x:nx, y:ny, w:150, h:60
         });
       } else {
@@ -8047,12 +8191,16 @@ async function viewCanvasDetail(id) {
       if (!nodes.find(function(n){return n.asset_id===assetId;})) {
         nodes.push({
           id:'n'+assetId,
-          label:      asset.asset_id_label||asset.name,
-          asset_code: asset.asset_id_label||'',
-          asset_name: asset.name||'',
-          asset_id:   assetId,
-          criticality:asset.criticality||null,
-          type:       asset.asset_type||'hardware',
+          label:        asset.asset_id_label||asset.name,
+          asset_code:   asset.asset_id_label||'',
+          asset_name:   asset.name||'',
+          asset_id:     assetId,
+          criticality:  asset.criticality||null,
+          type:         asset.asset_type||'hardware',
+          manufacturer: asset.manufacturer||'',
+          model_number: asset.model||'',
+          nsn:          asset.nsn||asset.part_number||'',
+          cage_code:    asset.cage_code||'',
           x:x, y:y, w:150, h:60
         });
       }
@@ -8076,55 +8224,132 @@ async function viewCanvasDetail(id) {
   }
 
   var CRIT_COLORS_PANEL = {CR:'#f87171',DE:'#fb923c',RD:'#fbbf24',SP:'#38bdf8',AD:'#64748b'};
-  function showSidePanel(node) {
+
+  async function showSidePanel(node) {
     sidePanelBody.innerHTML='';
     sidePanel.style.display='';
+    sidePanel.scrollIntoView({behavior:'smooth',block:'nearest'});
 
-    var panelHdr=div(''); panelHdr.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:8px;';
-    if (node.asset_id) panelHdr.appendChild(btn('ops-btn-sm','👁 View Asset',function(){navigate('asset-detail',node.asset_id);}));
-    var renamBtn=btn('ops-btn-sm','✏ Rename',function(){
-      var nn=prompt('New display name:',node.asset_name||node.label);
-      if(nn&&nn.trim()){node.asset_name=nn.trim();node.label=nn.trim();dirty=true;render();showSidePanel(node);}
-    });
-    panelHdr.appendChild(renamBtn);
+    // Fetch live asset record if linked
+    var asset = null;
+    if (node.asset_id) {
+      sidePanelBody.appendChild(el('div',{text:'Loading…',style:'color:#475569;font-size:12px;padding:8px 0;'}));
+      asset = await API.assets.get(node.asset_id).catch(()=>null);
+      sidePanelBody.innerHTML='';
+    }
+
+    // Merge: prefer live asset data but fall back to node cache
+    var name    = (asset&&asset.name)     || node.asset_name || node.label || '—';
+    var mfr     = (asset&&asset.manufacturer) || node.manufacturer || '';
+    var model   = (asset&&asset.model)    || node.model_number || '';
+    var serial  = (asset&&asset.serial_number) || '';
+    var locStr  = (asset&&asset.location) || '';
+    var ipAddr  = (asset&&asset.ip_address) || '';
+    var crit    = (asset&&asset.criticality) || node.criticality || '';
+    var aType   = (asset&&asset.asset_type) || node.type || '';
+    var aStatus = (asset&&asset.status) || '';
+    var aCode   = (asset&&asset.asset_id_label) || node.asset_code || '';
+    var nsn     = (asset&&(asset.nsn||asset.national_stock_number)) || node.nsn || '';
+    var partNum = (asset&&asset.part_number) || '';
+    var cageCode= (asset&&asset.cage_code) || node.cage_code || '';
+    var fwVer   = (asset&&asset.firmware_version) || '';
+    var swVer   = (asset&&asset.software_version) || '';
+    var warranty= (asset&&asset.warranty_expiry) || '';
+    var instDate= (asset&&asset.installation_date) || '';
+    var lastVerif=(asset&&asset.last_verified_at) || '';
+
+    // ── Header row ───────────────────────────────────────────────
+    var panelHdr=div(''); panelHdr.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;';
+    if (node.asset_id) panelHdr.appendChild(btn('ops-btn-sm','👁 Full Asset Record',function(){navigate('asset-detail',node.asset_id);}));
+    panelHdr.appendChild(btn('ops-btn-sm','✕ Close',function(){sidePanel.style.display='none';selId=null;document.getElementById('cvs-del').style.display='none';render();}));
     sidePanelBody.appendChild(panelHdr);
 
-    // Asset identity block
-    var idBlock=div(''); idBlock.style.cssText='background:#0f172a;border:1px solid #2e3650;border-radius:6px;padding:10px 12px;margin-bottom:10px;';
-    if (node.asset_code) {
-      idBlock.appendChild(el('div',{text:node.asset_code,style:'font-family:monospace;font-size:11px;color:#38bdf8;margin-bottom:3px;'}));
+    // ── Identity block ───────────────────────────────────────────
+    var idBlock=div(''); idBlock.style.cssText='margin-bottom:14px;';
+    // Name
+    idBlock.appendChild(el('div',{text:name,style:'font-size:16px;font-weight:800;color:#e2e8f0;margin-bottom:4px;line-height:1.3;'}));
+    // Badges row
+    var bRow=div(''); bRow.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;';
+    if (aType)   bRow.appendChild(span('ops-badge badge-blue',aType));
+    if (crit && CRIT_COLORS_PANEL[crit]) {
+      var cc=CRIT_COLORS_PANEL[crit];
+      bRow.appendChild(el('span',{text:crit,style:'background:'+cc+'22;color:'+cc+';font-size:10px;font-weight:800;padding:2px 7px;border-radius:4px;border:1px solid '+cc+'44;'}));
     }
-    idBlock.appendChild(el('div',{text:node.asset_name||node.label,style:'font-weight:700;color:#e2e8f0;font-size:13px;margin-bottom:4px;'}));
-    var metaRow=div(''); metaRow.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;';
-    metaRow.appendChild(span('ops-badge badge-blue',node.type));
-    if (node.criticality) {
-      var cColor=CRIT_COLORS_PANEL[node.criticality]||'#64748b';
-      var cBadge=el('span',{text:node.criticality,style:'background:'+cColor+'22;color:'+cColor+';font-size:10px;font-weight:800;padding:2px 6px;border-radius:3px;'});
-      metaRow.appendChild(cBadge);
-    }
-    idBlock.appendChild(metaRow);
+    if (aStatus) bRow.appendChild(span('ops-badge '+(aStatus==='active'?'badge-green':'badge-gray'),aStatus));
+    idBlock.appendChild(bRow);
     sidePanelBody.appendChild(idBlock);
 
-    var st=node.asset_id?(statuses[node.asset_id]||statuses[String(node.asset_id)]):null;
-    if (st) {
-      var stBox=div(''); stBox.style.cssText='padding:10px;background:#0f172a;border-radius:6px;font-size:12px;border:1px solid #2e3650;';
-      if (st.sev_count>0) stBox.appendChild(el('div',{text:'⚠ '+st.sev_count+' open deficienc'+(st.sev_count===1?'y':'ies')+' (worst SEV-'+st.sev+')',style:'color:#f87171;margin-bottom:4px;'}));
-      if (st.loto)        stBox.appendChild(el('div',{text:'🔒 LOTO / Tagout active',style:'color:#f97316;margin-bottom:4px;'}));
-      if (st.overdue)     stBox.appendChild(el('div',{text:'⏱ Verification overdue',style:'color:#fbbf24;margin-bottom:4px;'}));
-      if (!st.sev_count&&!st.loto&&!st.overdue) stBox.appendChild(el('div',{text:'✓ Healthy — no open issues',style:'color:#4ade80;'}));
-      sidePanelBody.appendChild(stBox);
-    } else if (node.asset_id) {
-      sidePanelBody.appendChild(el('p',{text:'Click "📡 Live Status" to load asset health.',style:'color:#475569;font-size:12px;'}));
+    // ── Specification fields ─────────────────────────────────────
+    function sField(label, value, mono) {
+      if (!value) return;
+      var row=div(''); row.style.cssText='display:flex;gap:0;margin-bottom:6px;align-items:baseline;';
+      row.appendChild(el('span',{text:label,style:'color:#475569;font-size:10px;text-transform:uppercase;letter-spacing:.4px;min-width:110px;flex-shrink:0;'}));
+      row.appendChild(el('span',{text:value,style:'color:#cbd5e1;font-size:12px;'+(mono?'font-family:monospace;':'')}));
+      sidePanelBody.appendChild(row);
     }
 
-    // Edge list
+    var specHead=el('div',{text:'Identification',style:'font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#334155;margin-bottom:6px;margin-top:2px;border-bottom:1px solid #1e2540;padding-bottom:4px;'});
+    sidePanelBody.appendChild(specHead);
+    sField('Asset Code',  aCode,   true);
+    sField('Manufacturer',mfr,     false);
+    sField('Model',       model,   true);
+    sField('Serial No.',  serial,  true);
+    sField('Firmware',    fwVer,   true);
+    sField('Software',    swVer,   true);
+    sField('Location',    locStr,  false);
+    sField('IP Address',  ipAddr,  true);
+
+    // Supply chain fields
+    if (nsn||partNum||cageCode) {
+      var supHead=el('div',{text:'Supply Chain',style:'font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#334155;margin-bottom:6px;margin-top:12px;border-bottom:1px solid #1e2540;padding-bottom:4px;'});
+      sidePanelBody.appendChild(supHead);
+      sField('NSN',         nsn,     true);
+      sField('Part Number', partNum, true);
+      sField('CAGE Code',   cageCode,true);
+    }
+
+    // Lifecycle fields
+    if (warranty||instDate||lastVerif) {
+      var lifHead=el('div',{text:'Lifecycle',style:'font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#334155;margin-bottom:6px;margin-top:12px;border-bottom:1px solid #1e2540;padding-bottom:4px;'});
+      sidePanelBody.appendChild(lifHead);
+      sField('Installed',   instDate?instDate.slice(0,10):'',  false);
+      sField('Warranty Exp',warranty?warranty.slice(0,10):'',  false);
+      sField('Last Verified',lastVerif?lastVerif.slice(0,10):'',false);
+    }
+
+    // ── Live status ───────────────────────────────────────────────
+    var st=node.asset_id?(statuses[node.asset_id]||statuses[String(node.asset_id)]):null;
+    if (st) {
+      var stHead=el('div',{text:'Live Status',style:'font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#334155;margin-bottom:6px;margin-top:12px;border-bottom:1px solid #1e2540;padding-bottom:4px;'});
+      sidePanelBody.appendChild(stHead);
+      var stBox=div(''); stBox.style.cssText='display:flex;flex-direction:column;gap:4px;';
+      if (st.sev_count>0) stBox.appendChild(el('div',{text:'⚠ '+st.sev_count+' open deficienc'+(st.sev_count===1?'y':'ies')+' — worst SEV-'+st.sev,style:'color:#f87171;font-size:12px;'}));
+      if (st.loto)        stBox.appendChild(el('div',{text:'🔒 LOTO / Tagout active',style:'color:#f97316;font-size:12px;'}));
+      if (st.overdue)     stBox.appendChild(el('div',{text:'⏱ Verification overdue (>18 mo)',style:'color:#fbbf24;font-size:12px;'}));
+      if (!st.sev_count&&!st.loto&&!st.overdue) stBox.appendChild(el('div',{text:'✓ Healthy — no open issues',style:'color:#4ade80;font-size:12px;'}));
+      sidePanelBody.appendChild(stBox);
+    } else if (node.asset_id) {
+      sidePanelBody.appendChild(el('p',{text:'Click "📡 Live Status" to load health indicators.',style:'color:#475569;font-size:11px;margin-top:12px;'}));
+    }
+
+    // ── Connections on this node ──────────────────────────────────
     var connected=edges.filter(function(e){return e.from===node.id||e.to===node.id;});
     if (connected.length) {
-      sidePanelBody.appendChild(el('p',{text:'Connections ('+connected.length+')',style:'color:#64748b;font-size:11px;text-transform:uppercase;margin:10px 0 4px;'}));
+      var connHead=el('div',{text:'Connections ('+connected.length+')',style:'font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#334155;margin-bottom:6px;margin-top:12px;border-bottom:1px solid #1e2540;padding-bottom:4px;'});
+      sidePanelBody.appendChild(connHead);
       connected.forEach(function(e2){
         var other=nodes.find(function(n){return n.id===(e2.from===node.id?e2.to:e2.from);});
         var dir=e2.from===node.id?'→':'←';
-        sidePanelBody.appendChild(el('div',{text:dir+' '+(other?other.label:'unknown')+(e2.label?' ('+e2.label+')':''),style:'font-size:12px;color:#94a3b8;padding:2px 0;'}));
+        var ct2=e2.conn_type?CONN_MAP[e2.conn_type]:null;
+        var ctColor=ct2?ct2[2]:'#334155';
+        var ctLabel=ct2?ct2[1]:'';
+        var connRow=div(''); connRow.style.cssText='display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #0d1117;font-size:11px;';
+        var dot2=div(''); dot2.style.cssText='width:10px;height:3px;background:'+ctColor+';border-radius:2px;flex-shrink:0;';
+        connRow.appendChild(dot2);
+        connRow.appendChild(el('span',{text:dir+' '+(other?other.asset_name||other.label:'unknown'),style:'color:#cbd5e1;flex:1;'}));
+        if (ctLabel) connRow.appendChild(el('span',{text:ctLabel,style:'color:'+ctColor+';font-size:10px;'}));
+        if (e2.label) connRow.appendChild(el('span',{text:e2.label,style:'color:#475569;font-size:10px;'}));
+        sidePanelBody.appendChild(connRow);
       });
     }
   }
@@ -8239,19 +8464,27 @@ async function openMilStdDrawing(canvas, doc, revisions, canvasNodes) {
   // ── Parts list table rows ──────────────────────────────────────
   var partsRows='';
   nodes.forEach(function(n,i){
-    partsRows+='<tr><td>'+(i+1)+'</td><td style="font-family:monospace;">'+(n.asset_code||'—')+'</td>'
-      +'<td>'+(n.asset_name||n.label||'—')+'</td><td>'+(n.type||'—')+'</td>'
-      +'<td>'+(n.criticality||'—')+'</td><td>'+(n.asset_id?'Asset #'+n.asset_id:'Manual')+'</td></tr>';
+    partsRows+='<tr>'
+      +'<td>'+(i+1)+'</td>'
+      +'<td>'+(n.asset_name||n.label||'—')+'</td>'
+      +'<td>'+(n.manufacturer||'—')+'</td>'
+      +'<td style="font-family:monospace;">'+(n.model_number||'—')+'</td>'
+      +'<td style="font-family:monospace;">'+(n.nsn||'—')+'</td>'
+      +'<td style="font-family:monospace;">'+(n.cage_code||'—')+'</td>'
+      +'<td>'+(n.criticality||'—')+'</td>'
+      +'</tr>';
   });
 
   // ── Interface list table rows ──────────────────────────────────
+  var CONN_TYPE_LABELS={'fiber':'Fiber Optic','ethernet':'Ethernet / Cat','coax':'Coaxial','serial_232':'RS-232 Serial','serial_485':'RS-485 Serial','power_ac':'Power (AC)','power_dc':'Power (DC)','waveguide':'Waveguide','optical':'Optical','can_bus':'CAN Bus','other':'Other'};
   var ifaceRows='';
   edges.forEach(function(e,i){
     var s=nodes.find(function(n){return n.id===e.from;})||{};
     var d2=nodes.find(function(n){return n.id===e.to;})||{};
     ifaceRows+='<tr><td>'+(i+1)+'</td>'
-      +'<td style="font-family:monospace;">'+(s.asset_code||s.label||'—')+'</td>'
-      +'<td style="font-family:monospace;">'+(d2.asset_code||d2.label||'—')+'</td>'
+      +'<td>'+(s.asset_name||s.label||'—')+'</td>'
+      +'<td>'+(d2.asset_name||d2.label||'—')+'</td>'
+      +'<td>'+(e.conn_type?CONN_TYPE_LABELS[e.conn_type]||e.conn_type:'—')+'</td>'
       +'<td>'+(e.label||'—')+'</td></tr>';
   });
 
@@ -8415,7 +8648,7 @@ async function openMilStdDrawing(canvas, doc, revisions, canvasNodes) {
     +'<div class="sheet"><div class="sheet-border"><div class="zone-bar"><span>D</span><span>C</span><span>B</span><span>A</span></div>'
     +'<div class="sheet-content"><div class="sheet-title">EQUIPMENT / PARTS LIST</div>'
     +'<table class="data-table">'
-      +'<thead><tr><th>#</th><th>Asset Code</th><th>Name / Description</th><th>Type</th><th>Criticality</th><th>Registry Ref</th></tr></thead>'
+      +'<thead><tr><th>#</th><th>Name / Description</th><th>Manufacturer</th><th>Model / Part No.</th><th>NSN</th><th>CAGE</th><th>Crit</th></tr></thead>'
       +'<tbody>'+partsRows+'</tbody></table>'
     +(nodes.length===0?'<div style="text-align:center;color:#64748b;margin-top:40px;">No nodes defined on canvas.</div>':'')
     +'</div>'
@@ -8425,7 +8658,7 @@ async function openMilStdDrawing(canvas, doc, revisions, canvasNodes) {
     +'<div class="sheet"><div class="sheet-border"><div class="zone-bar"><span>D</span><span>C</span><span>B</span><span>A</span></div>'
     +'<div class="sheet-content"><div class="sheet-title">INTERFACE / CONNECTION LIST</div>'
     +'<table class="data-table">'
-      +'<thead><tr><th>#</th><th>From (Code)</th><th>To (Code)</th><th>Interface / Signal</th></tr></thead>'
+      +'<thead><tr><th>#</th><th>From</th><th>To</th><th>Connection Type</th><th>Signal / Label</th></tr></thead>'
       +'<tbody>'+ifaceRows+'</tbody></table>'
     +(edges.length===0?'<div style="text-align:center;color:#64748b;margin-top:40px;">No connections defined on canvas.</div>':'')
     +'<div style="margin-top:24px;">'
