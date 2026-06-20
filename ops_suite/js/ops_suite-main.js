@@ -1,5 +1,5 @@
 /**
- * OpsSuite v3.19.0
+ * OpsSuite v3.19.1
  * Sprint 0A/0B: shops, asset coding (TYPE-SHOP-POSITION), criticality,
  * readiness engine, local_uuid offline sync foundation.
  */
@@ -7054,6 +7054,12 @@ function renderHealthReportBody(container, r) {
     addStat(r.summary.overdue_pms, 'Overdue PMs', r.summary.overdue_pms>0?'#fb923c':'#4ade80', 'pm-procedures');
     addStat(r.summary.critical_at_risk, 'Critical at Risk', r.summary.critical_at_risk>0?'#f87171':'#4ade80', null);
     addStat(r.summary.assets_no_pm, 'No PM Assigned', r.summary.assets_no_pm>0?'#facc15':'#4ade80', null);
+    if (r.summary.predicted_30d !== undefined) {
+      addStat(r.summary.predicted_30d, 'Pred. Fail 30d', r.summary.predicted_30d>0?'#f87171':'#4ade80', null);
+      if (r.summary.funding_projection > 0) {
+        addStat('$'+Math.round(r.summary.funding_projection).toLocaleString(), '12-Mo Funding Est', '#fb923c', null);
+      }
+    }
     addStat(r.summary.iuid_gaps, 'IUID Gaps', r.summary.iuid_gaps>0?'#64748b':'#4ade80', null);
     scoreCard.appendChild(statsRow);
 
@@ -7230,6 +7236,77 @@ function renderHealthReportBody(container, r) {
         function(i){ if(r.iuid_gaps[i]) navigate('asset-detail', r.iuid_gaps[i].id); }
       ));
       container.appendChild(iuidCard);
+    }
+
+    // ── Predicted Failures (Parsons Methodology) ──────────────────
+    if (r.predicted_failures && r.predicted_failures.length) {
+      var pfCard = div('ops-card'); pfCard.style.marginBottom = '16px';
+      var pfHdr  = div('ops-card-header');
+      pfHdr.appendChild(el('h3',{text:'📈 Predicted Failures — MTBF / MTTR Analysis ('+r.predicted_failures.length+' assets tracked)'}));
+      pfHdr.appendChild(el('p',{cls:'ops-form-hint',text:'Based on closed deficiency history. MTBF = mean time between failures (inter-failure uptime); MTTR = mean time to repair. Predicted date = last failure + MTBF.',style:'padding:8px 0 0;font-size:11px;color:#64748b;'}));
+      pfCard.appendChild(pfHdr);
+
+      // Summary KPIs
+      var pfKpiRow = div(''); pfKpiRow.style.cssText='display:flex;gap:12px;flex-wrap:wrap;padding:12px 16px 0;';
+      var pred30n  = r.predicted_failures.filter(function(p){return p.days_until_failure!==null&&p.days_until_failure<=30&&p.days_until_failure>0;}).length;
+      var pred90n  = r.predicted_failures.filter(function(p){return p.days_until_failure!==null&&p.days_until_failure<=90&&p.days_until_failure>0;}).length;
+      var overdueN = r.predicted_failures.filter(function(p){return p.days_until_failure!==null&&p.days_until_failure<=0;}).length;
+      var fund12   = r.predicted_failures.filter(function(p){return p.days_until_failure!==null&&p.days_until_failure<=365&&p.days_until_failure>0;})
+                       .reduce(function(s,p){return s+(p.avg_cost||0);},0);
+      function pfKpi(label, val, col){
+        var k=div(''); k.style.cssText='min-width:100px;padding:10px 14px;background:#0f172a;border-radius:6px;border-left:3px solid '+col+';text-align:center;';
+        k.appendChild(el('div',{text:String(val),style:'font-size:20px;font-weight:900;color:'+col+';'}));
+        k.appendChild(el('div',{text:label,style:'font-size:9px;color:#64748b;text-transform:uppercase;margin-top:2px;letter-spacing:.5px;'}));
+        return k;
+      }
+      pfKpiRow.appendChild(pfKpi('Overdue (Past Predicted)',overdueN,'#f87171'));
+      pfKpiRow.appendChild(pfKpi('Predicted ≤ 30 Days',pred30n,pred30n>0?'#fb923c':'#4ade80'));
+      pfKpiRow.appendChild(pfKpi('Predicted ≤ 90 Days',pred90n,pred90n>0?'#facc15':'#4ade80'));
+      pfKpiRow.appendChild(pfKpi('12-Mo Funding Est','$'+Math.round(fund12).toLocaleString(),'#38bdf8'));
+      pfCard.appendChild(pfKpiRow);
+
+      pfCard.appendChild(makeTable(
+        ['Asset','Crit','HSC','Incidents','MTBF (days)','MTTR (days)','Avg Cost','Avg Man-Days','Last Failure','Predicted Next Failure','Status'],
+        r.predicted_failures.map(function(p) {
+          var duf = p.days_until_failure;
+          var statusBadge, urgencyColor;
+          if (duf === null) {
+            statusBadge = span('ops-badge badge-gray','No MTBF*'); urgencyColor='#475569';
+          } else if (duf <= 0) {
+            statusBadge = span('ops-badge badge-red','OVERDUE'); urgencyColor='#f87171';
+          } else if (duf <= 30) {
+            statusBadge = span('ops-badge badge-red',duf+'d away'); urgencyColor='#f87171';
+          } else if (duf <= 90) {
+            statusBadge = span('ops-badge badge-orange',duf+'d away'); urgencyColor='#fb923c';
+          } else if (duf <= 180) {
+            statusBadge = span('ops-badge badge-yellow',duf+'d away'); urgencyColor='#facc15';
+          } else {
+            statusBadge = span('ops-badge badge-green',duf+'d away'); urgencyColor='#4ade80';
+          }
+          var assetLink = el('strong',{text:p.name,style:'cursor:pointer;color:#38bdf8;'});
+          assetLink.onclick = function(){ navigate('asset-detail', p.asset_id); };
+          return [
+            assetLink,
+            p.criticality_code ? span('ops-badge '+(p.criticality_code==='CR'?'badge-red':p.criticality_code==='DE'?'badge-orange':'badge-gray'), p.criticality_code) : span('ops-muted','—'),
+            p.hsc_code ? span('ops-mono ops-small', p.hsc_code) : span('ops-muted','—'),
+            el('span',{text:String(p.incident_count),style:'font-weight:700;color:#94a3b8;'}),
+            p.mtbf_days !== null ? el('span',{text:p.mtbf_days+' d',style:'color:#38bdf8;font-weight:700;'}) : span('ops-muted','≥2 needed'),
+            p.mttr_days !== null ? el('span',{text:p.mttr_days+' d',style:'color:#a78bfa;'}) : span('ops-muted','—'),
+            p.avg_cost > 0 ? el('span',{text:'$'+p.avg_cost.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0}),style:'color:#4ade80;'}) : span('ops-muted','$0'),
+            p.avg_man_days > 0 ? el('span',{text:p.avg_man_days+' MD',style:'color:#fbbf24;'}) : span('ops-muted','—'),
+            el('span',{text:p.last_failure||'—',style:'font-size:11px;color:#64748b;'}),
+            p.predicted_date ? el('span',{text:p.predicted_date,style:'font-weight:700;color:'+urgencyColor+';font-size:11px;'}) : span('ops-muted','—'),
+            statusBadge,
+          ];
+        })
+      ));
+      pfCard.appendChild(el('p',{cls:'ops-form-hint',text:'* MTBF requires ≥2 closed incidents for the asset. Assets with 1 incident have MTTR only. Methodology: Parsons Predicted Operational Equipment Failure Projections (2025).',style:'padding:8px 16px;font-size:10px;color:#475569;border-top:1px solid #1e2540;margin:0;'}));
+      container.appendChild(pfCard);
+    } else if (r.predicted_failures !== undefined) {
+      var pfEmptyCard = div('ops-card'); pfEmptyCard.style.marginBottom='16px';
+      pfEmptyCard.appendChild(div('ops-card-header',[el('h3',{text:'📈 Predicted Failures'})]));
+      pfEmptyCard.appendChild(el('p',{cls:'ops-empty',text:'No closed deficiency history found. Predicted failure analysis requires at least one closed deficiency per asset.'}));
+      container.appendChild(pfEmptyCard);
     }
 }
 
