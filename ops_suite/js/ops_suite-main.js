@@ -1,5 +1,5 @@
 /**
- * OpsSuite v3.23.1
+ * OpsSuite v3.23.4
  * Sprint 0A/0B: shops, asset coding (TYPE-SHOP-POSITION), criticality,
  * readiness engine, local_uuid offline sync foundation.
  */
@@ -12055,6 +12055,12 @@ async function viewFleetNodeDetail(nodeId) {
 
   setContent(wrap);
 }
+
+function openModal(title, html, onSave, saveLabel) {
+  var wrap = el('div'); wrap.innerHTML = html;
+  modal(title, wrap, onSave, saveLabel);
+}
+function closeModal() {}
 
 async function swRequestModal(nodeId) {
   var catalog = await API.software.catalog();
