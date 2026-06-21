@@ -3,7 +3,9 @@ declare(strict_types=1);
 
 namespace OCA\OpsSuite\AppInfo;
 
+use OCA\OpsSuite\BackgroundJob\AltofleetOfflineCheck;
 use OCA\OpsSuite\Migration\SeedFailureModes;
+use OCA\OpsSuite\Notification\Notifier;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -21,6 +23,8 @@ class Application extends App implements IBootstrap {
 
     public function register(IRegistrationContext $context): void {
         $context->registerRepairStep(SeedFailureModes::class);
+        $context->registerNotifier(Notifier::class);
+        $context->registerBackgroundJob(AltofleetOfflineCheck::class);
     }
 
     public function boot(IBootContext $context): void {

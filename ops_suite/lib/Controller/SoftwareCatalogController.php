@@ -1,0 +1,236 @@
+<?php
+declare(strict_types=1);
+namespace OCA\OpsSuite\Controller;
+
+use OCA\OpsSuite\Db\SoftwareCatalogItem;
+use OCA\OpsSuite\Db\SoftwareCatalogMapper;
+use OCA\OpsSuite\Db\SoftwareRequest;
+use OCA\OpsSuite\Db\SoftwareRequestMapper;
+use OCA\OpsSuite\Db\DeficiencyMapper;
+use OCA\OpsSuite\Db\Deficiency;
+use OCA\OpsSuite\Db\AltofleetNodeMapper;
+use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\DataResponse;
+use OCP\IRequest;
+use OCP\IUserSession;
+
+class SoftwareCatalogController extends Controller {
+    public function __construct(
+        string $appName,
+        IRequest $request,
+        private SoftwareCatalogMapper $catalogMapper,
+        private SoftwareRequestMapper $requestMapper,
+        private DeficiencyMapper      $deficiencyMapper,
+        private AltofleetNodeMapper   $nodeMapper,
+        private IUserSession          $userSession,
+    ) {
+        parent::__construct($appName, $request);
+    }
+
+    /** @NoAdminRequired */
+    public function catalogIndex(): DataResponse {
+        $items = $this->catalogMapper->findAll();
+        return new DataResponse(array_map(fn($i) => $i->jsonSerialize(), $items));
+    }
+
+    /** @NoAdminRequired */
+    public function catalogCreate(): DataResponse {
+        $now  = date('Y-m-d H:i:s');
+        $data = $this->request->getParams();
+        $item = new SoftwareCatalogItem();
+        $item->setName($data['name'] ?? '');
+        $item->setPackageName($data['package_name'] ?? '');
+        $item->setDescription($data['description'] ?? '');
+        $item->setCategory($data['category'] ?? 'General');
+        $item->setTier((int)($data['tier'] ?? 1));
+        $item->setIcon($data['icon'] ?? '📦');
+        $item->setAutoApprove((bool)($data['auto_approve'] ?? false));
+        $item->setEnabled(true);
+        $item->setCreatedAt($now);
+        $item->setUpdatedAt($now);
+        $created = $this->catalogMapper->insert($item);
+        return new DataResponse($created->jsonSerialize(), Http::STATUS_CREATED);
+    }
+
+    /** @NoAdminRequired */
+    public function catalogUpdate(int $id): DataResponse {
+        $item = $this->catalogMapper->findById($id);
+        $data = $this->request->getParams();
+        if (isset($data['name']))         $item->setName($data['name']);
+        if (isset($data['package_name'])) $item->setPackageName($data['package_name']);
+        if (isset($data['description']))  $item->setDescription($data['description']);
+        if (isset($data['category']))     $item->setCategory($data['category']);
+        if (isset($data['tier']))         $item->setTier((int)$data['tier']);
+        if (isset($data['icon']))         $item->setIcon($data['icon']);
+        if (isset($data['auto_approve'])) $item->setAutoApprove((bool)$data['auto_approve']);
+        if (isset($data['enabled']))      $item->setEnabled((bool)$data['enabled']);
+        $item->setUpdatedAt(date('Y-m-d H:i:s'));
+        $updated = $this->catalogMapper->update($item);
+        return new DataResponse($updated->jsonSerialize());
+    }
+
+    /** @NoAdminRequired */
+    public function catalogDelete(int $id): DataResponse {
+        $item = $this->catalogMapper->findById($id);
+        $this->catalogMapper->delete($item);
+        return new DataResponse(['ok' => true]);
+    }
+
+    // ── Requests ──────────────────────────────────────────────
+
+    /** @NoAdminRequired */
+    public function requestIndex(): DataResponse {
+        $status = $this->request->getParam('status');
+        $nodeId = $this->request->getParam('node_id');
+        if ($nodeId) {
+            $reqs = $this->requestMapper->findByNode((int)$nodeId);
+        } else {
+            $reqs = $this->requestMapper->findAll($status ?: null);
+        }
+        $out = [];
+        foreach ($reqs as $r) {
+            $row = $r->jsonSerialize();
+            try {
+                $cat = $this->catalogMapper->findById($r->getCatalogId());
+                $row['catalog'] = $cat->jsonSerialize();
+            } catch (\Exception) {
+                $row['catalog'] = null;
+            }
+            try {
+                $node = $this->nodeMapper->findById($r->getNodeId());
+                $row['node_hostname'] = $node->getHostname();
+            } catch (\Exception) {
+                $row['node_hostname'] = '';
+            }
+            $out[] = $row;
+        }
+        return new DataResponse($out);
+    }
+
+    /** @NoAdminRequired */
+    public function requestCreate(): DataResponse {
+        $now  = date('Y-m-d H:i:s');
+        $uid  = $this->userSession->getUser()?->getUID() ?? '';
+        $data = $this->request->getParams();
+        $nodeId    = (int)($data['node_id'] ?? 0);
+        $catalogId = (int)($data['catalog_id'] ?? 0);
+
+        $cat  = $this->catalogMapper->findById($catalogId);
+        $node = $this->nodeMapper->findById($nodeId);
+
+        $req = new SoftwareRequest();
+        $req->setNodeId($nodeId);
+        $req->setCatalogId($catalogId);
+        $req->setRequestedBy($uid);
+        $req->setStatus($cat->getAutoApprove() ? 'approved' : 'pending');
+        $req->setApprovedBy($cat->getAutoApprove() ? 'auto' : '');
+        $req->setApprovedAt($cat->getAutoApprove() ? $now : '');
+        $req->setInstalledAt('');
+        $req->setNotes($data['notes'] ?? '');
+        $req->setCreatedAt($now);
+        $req->setUpdatedAt($now);
+
+        // Auto-create a Deficiency for non-auto-approved requests
+        if (!$cat->getAutoApprove()) {
+            $def = new Deficiency();
+            $def->setSummary('Software Request: ' . $cat->getName() . ' — ' . $node->getHostname());
+            $def->setDescription(
+                'Node ' . $node->getHostname() . ' (' . $node->getIpAddress() . ') ' .
+                'has requested installation of "' . $cat->getName() . '" (' . $cat->getPackageName() . '). ' .
+                'Tier: ' . $cat->getTierLabel() . '. Requested by: ' . $uid . '. ' .
+                'Approve or reject this request in Infrastructure → Software Catalog → Requests.'
+            );
+            $def->setSeverity('SEV-4');
+            $def->setStatus('open');
+            $def->setDiscoveryMethod('software_request');
+            $def->setAssignedTo('');
+            $def->setReviewedBy('');
+            $def->setRequirementsToResolve('');
+            $def->setOutsideEntityRequired('');
+            $def->setEstPartsCost(0);
+            $def->setEstLaborCost(0);
+            $def->setManDaysInternal(0);
+            $def->setManDaysExternal(0);
+            $def->setBudgetStatus('unbudgeted');
+            $def->setAssetId(0);
+            $def->setCreatedAt($now);
+            $def->setUpdatedAt($now);
+            $created_def = $this->deficiencyMapper->insert($def);
+            $req->setDeficiencyId($created_def->getId());
+        }
+
+        $created = $this->requestMapper->insert($req);
+        $row = $created->jsonSerialize();
+        $row['catalog'] = $cat->jsonSerialize();
+        $row['node_hostname'] = $node->getHostname();
+        return new DataResponse($row, Http::STATUS_CREATED);
+    }
+
+    /** @NoAdminRequired */
+    public function requestApprove(int $id): DataResponse {
+        $now = date('Y-m-d H:i:s');
+        $uid = $this->userSession->getUser()?->getUID() ?? '';
+        $req = $this->requestMapper->findById($id);
+        $req->setStatus('approved');
+        $req->setApprovedBy($uid);
+        $req->setApprovedAt($now);
+        $req->setUpdatedAt($now);
+        // Close the linked deficiency
+        if ($req->getDeficiencyId()) {
+            try {
+                $def = $this->deficiencyMapper->find($req->getDeficiencyId());
+                $def->setStatus('in_progress');
+                $def->setUpdatedAt($now);
+                $this->deficiencyMapper->update($def);
+            } catch (\Exception) {}
+        }
+        $updated = $this->requestMapper->update($req);
+        return new DataResponse($updated->jsonSerialize());
+    }
+
+    /** @NoAdminRequired */
+    public function requestReject(int $id): DataResponse {
+        $now   = date('Y-m-d H:i:s');
+        $uid   = $this->userSession->getUser()?->getUID() ?? '';
+        $notes = $this->request->getParam('notes', '');
+        $req   = $this->requestMapper->findById($id);
+        $req->setStatus('rejected');
+        $req->setApprovedBy($uid);
+        $req->setApprovedAt($now);
+        $req->setNotes($notes);
+        $req->setUpdatedAt($now);
+        if ($req->getDeficiencyId()) {
+            try {
+                $def = $this->deficiencyMapper->find($req->getDeficiencyId());
+                $def->setStatus('closed');
+                $def->setUpdatedAt($now);
+                $this->deficiencyMapper->update($def);
+            } catch (\Exception) {}
+        }
+        $updated = $this->requestMapper->update($req);
+        return new DataResponse($updated->jsonSerialize());
+    }
+
+    /** @NoAdminRequired */
+    public function requestConfirm(int $id): DataResponse {
+        $now    = date('Y-m-d H:i:s');
+        $data   = $this->request->getParams();
+        $success = (bool)($data['success'] ?? false);
+        $req    = $this->requestMapper->findById($id);
+        $req->setStatus($success ? 'installed' : 'failed');
+        $req->setInstalledAt($success ? $now : '');
+        $req->setNotes($data['error'] ?? '');
+        $req->setUpdatedAt($now);
+        if ($success && $req->getDeficiencyId()) {
+            try {
+                $def = $this->deficiencyMapper->find($req->getDeficiencyId());
+                $def->setStatus('closed');
+                $def->setUpdatedAt($now);
+                $this->deficiencyMapper->update($def);
+            } catch (\Exception) {}
+        }
+        $updated = $this->requestMapper->update($req);
+        return new DataResponse($updated->jsonSerialize());
+    }
+}

@@ -293,5 +293,26 @@ return [
         ['name' => 'shop#indexUsers',  'url' => '/api/shops/{id}/users',             'verb' => 'GET'],
         ['name' => 'shop#addUser',     'url' => '/api/shops/{id}/users',             'verb' => 'POST'],
         ['name' => 'shop#removeUser',  'url' => '/api/shops/{id}/users/{userId}',    'verb' => 'DELETE'],
+
+        // ── AltoFleet Node Registry (Sprint 6A) ───────────────────────────
+        ['name' => 'altofleet#index',     'url' => '/api/altofleet/nodes',              'verb' => 'GET'],
+        ['name' => 'altofleet#show',      'url' => '/api/altofleet/nodes/{id}',         'verb' => 'GET'],
+        ['name' => 'altofleet#update',    'url' => '/api/altofleet/nodes/{id}',         'verb' => 'PUT'],
+        ['name' => 'altofleet#destroy',   'url' => '/api/altofleet/nodes/{id}',         'verb' => 'DELETE'],
+        ['name' => 'altofleet#register',  'url' => '/api/altofleet/register',           'verb' => 'POST'],
+        ['name' => 'altofleet#checkin',   'url' => '/api/altofleet/checkin',            'verb' => 'POST'],
+        ['name' => 'altofleet#heartbeat', 'url' => '/api/altofleet/heartbeat',          'verb' => 'POST'],
+        ['name' => 'altofleet#nodeCves',  'url' => '/api/altofleet/nodes/{id}/cves',   'verb' => 'GET'],
+
+        // ── Software Catalog (Sprint 6B) ──────────────────────────────────
+        ['name' => 'software_catalog#catalogIndex',   'url' => '/api/software/catalog',                    'verb' => 'GET'],
+        ['name' => 'software_catalog#catalogCreate',  'url' => '/api/software/catalog',                    'verb' => 'POST'],
+        ['name' => 'software_catalog#catalogUpdate',  'url' => '/api/software/catalog/{id}',               'verb' => 'PUT'],
+        ['name' => 'software_catalog#catalogDelete',  'url' => '/api/software/catalog/{id}',               'verb' => 'DELETE'],
+        ['name' => 'software_catalog#requestIndex',   'url' => '/api/software/requests',                   'verb' => 'GET'],
+        ['name' => 'software_catalog#requestCreate',  'url' => '/api/software/requests',                   'verb' => 'POST'],
+        ['name' => 'software_catalog#requestApprove', 'url' => '/api/software/requests/{id}/approve',      'verb' => 'POST'],
+        ['name' => 'software_catalog#requestReject',  'url' => '/api/software/requests/{id}/reject',       'verb' => 'POST'],
+        ['name' => 'software_catalog#requestConfirm', 'url' => '/api/software/requests/{id}/confirm',      'verb' => 'POST'],
     ],
 ];

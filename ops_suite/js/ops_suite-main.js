@@ -1,5 +1,5 @@
 /**
- * OpsSuite v3.19.4
+ * OpsSuite v3.23.1
  * Sprint 0A/0B: shops, asset coding (TYPE-SHOP-POSITION), criticality,
  * readiness engine, local_uuid offline sync foundation.
  */
@@ -270,7 +270,20 @@ var API = {
                   destroy:       (assetId,id)  => req('DELETE', '/api/assets/'+assetId+'/models/'+id),
                   addHotspot:    (assetId,modelId,d)       => req('POST',   '/api/assets/'+assetId+'/models/'+modelId+'/hotspots', d),
                   updateHotspot: (assetId,modelId,hsId,d)  => req('PUT',    '/api/assets/'+assetId+'/models/'+modelId+'/hotspots/'+hsId, d),
-                  deleteHotspot: (assetId,modelId,hsId)    => req('DELETE', '/api/assets/'+assetId+'/models/'+modelId+'/hotspots/'+hsId) } };
+                  deleteHotspot: (assetId,modelId,hsId)    => req('DELETE', '/api/assets/'+assetId+'/models/'+modelId+'/hotspots/'+hsId) },
+  altofleet:    { list:      p     => req('GET',    '/api/altofleet/nodes'+qs(p)),
+                  get:       id    => req('GET',    '/api/altofleet/nodes/'+id),
+                  update:    (id,d)=> req('PUT',    '/api/altofleet/nodes/'+id, d),
+                  destroy:   id    => req('DELETE', '/api/altofleet/nodes/'+id),
+                  cves:      id    => req('GET',    '/api/altofleet/nodes/'+id+'/cves') },
+  software:     { catalog:       p     => req('GET',    '/api/software/catalog'+qs(p)),
+                  createCatalog: d     => req('POST',   '/api/software/catalog', d),
+                  updateCatalog: (id,d)=> req('PUT',    '/api/software/catalog/'+id, d),
+                  deleteCatalog: id    => req('DELETE', '/api/software/catalog/'+id),
+                  requests:      p     => req('GET',    '/api/software/requests'+qs(p)),
+                  createRequest: d     => req('POST',   '/api/software/requests', d),
+                  approve:       id    => req('POST',   '/api/software/requests/'+id+'/approve'),
+                  reject:        (id,d)=> req('POST',   '/api/software/requests/'+id+'/reject', d) } };
 
 /* ── Cache ───────────────────────────────────────────────────── */
 var _cache = { assets:null, users:null, settings:null, shops:null };
@@ -2513,17 +2526,63 @@ async function viewPmDashboard() {
   wrap.appendChild(hdr);
   var loading=span('ops-muted','Loading…'); wrap.appendChild(loading);
   var _pf=_selectedPlatformIds.length?{platform_ids:_selectedPlatformIds.join(',')}:{};
-  var [all,overdue] = await Promise.all([API.procedures.list({..._pf}),API.procedures.list({..._pf,overdue:'1'})]).catch(e=>{
-    loading.remove(); wrap.appendChild(el('div',{cls:'ops-empty',html:'<span style="color:#f87171">⚠ '+e.message+'</span>'})); return [[],[]];
+  var [all,overdue,nodes] = await Promise.all([
+    API.procedures.list({..._pf}),
+    API.procedures.list({..._pf,overdue:'1'}),
+    API.altofleet.list().catch(()=>[])
+  ]).catch(e=>{
+    loading.remove(); wrap.appendChild(el('div',{cls:'ops-empty',html:'<span style="color:#f87171">⚠ '+e.message+'</span>'})); return [[],[],[]];
   });
   loading.remove();
   var now=Date.now(),in7=now+7*86400000;
   var soon=all.filter(p=>{ var d=p.next_due?new Date(p.next_due).getTime():0; return d>=now&&d<=in7; });
+
+  // Fleet node health buckets
+  var offlineNodes=nodes.filter(n=>n.status==='offline');
+  var staleNodes=nodes.filter(n=>{
+    if(n.status==='offline') return false;
+    if(!n.last_seen) return false;
+    var age=(Date.now()-new Date(n.last_seen).getTime())/86400000;
+    return age>1;
+  });
+  var nodeAlerts=offlineNodes.length+staleNodes.length;
+
   var grid=div('stats-grid');
-  [[all.length,'Active Procedures','stat-teal'],[soon.length,'Due This Week','stat-blue'],[overdue.length,'Overdue','stat-orange']].forEach(row=>{
+  [[all.length,'Active Procedures','stat-teal'],[soon.length,'Due This Week','stat-blue'],
+   [overdue.length,'Overdue','stat-orange'],[nodeAlerts,'Node Alerts',nodeAlerts>0?'stat-red':'stat-teal']
+  ].forEach(row=>{
     var c=div('stat-card '+row[2]); c.appendChild(el('div',{cls:'stat-label',text:row[1]})); c.appendChild(el('div',{cls:'stat-value',text:String(row[0])})); grid.appendChild(c);
   });
   wrap.appendChild(grid);
+
+  // Fleet Node health panel
+  if(nodes.length>0){
+    var nc=div('ops-card'); nc.style.marginBottom='20px';
+    nc.appendChild(div('ops-card-header',[
+      el('h3',{text:'Fleet Node Health'}),
+      btn('ghost ops-btn-sm','View All Nodes →',()=>navigate('fleet-nodes'))
+    ]));
+    if(offlineNodes.length===0&&staleNodes.length===0){
+      nc.appendChild(el('div',{cls:'ops-empty',text:'✓ All nodes reporting normally'}));
+    } else {
+      var alertNodes=[...offlineNodes,...staleNodes].slice(0,5);
+      nc.appendChild(makeTable(['Node','Status','Last Seen','Issue',''],
+        alertNodes.map(n=>{
+          var age=n.last_seen?Math.floor((Date.now()-new Date(n.last_seen).getTime())/60000)+'m ago':'never';
+          var issue=offlineNodes.includes(n)?'Offline — missed heartbeat':'No heartbeat >24h';
+          var badge=offlineNodes.includes(n)?span('ops-badge badge-red','OFFLINE'):span('ops-badge badge-orange','STALE');
+          var defBtn=btn('danger ops-btn-sm','Create Deficiency',async()=>{
+            await pmNodeCreateDeficiency(n);
+            await viewPmDashboard();
+          });
+          return [el('strong',{text:n.hostname||n.local_uuid}),badge,span('ops-muted ops-small',age),
+            span('ops-small',issue),defBtn];
+        })
+      ));
+    }
+    wrap.appendChild(nc);
+  }
+
   var two=div('ops-two-col');
   var oc=div('ops-card');
   oc.appendChild(div('ops-card-header',[el('h3',{text:'⚠ Overdue — Action Required'})]));
@@ -2541,6 +2600,25 @@ async function viewPmDashboard() {
       p.document_ref?sopLink(p.document_ref):span('ops-muted','—'),p.assigned_to||'—'])));
   two.appendChild(sc);
   wrap.appendChild(two);
+}
+
+async function pmNodeCreateDeficiency(node){
+  var summary='Fleet Node Offline: '+(node.hostname||node.local_uuid);
+  var desc='Node '+(node.hostname||node.local_uuid)+' ('+(node.ip_address||'unknown IP')+') has missed its heartbeat and was flagged offline. '
+    +'Last seen: '+(node.last_seen?new Date(node.last_seen).toLocaleString():'never')+'. '
+    +'Investigate connectivity and confirm the AltoFleet agent is running (sudo systemctl status altofleet).';
+  try{
+    await API.deficiencies.create({
+      summary: summary,
+      description: desc,
+      severity: 'SEV-2',
+      status: 'open',
+      discovery_method: 'altofleet'
+    });
+    showToast('Deficiency created for node '+(node.hostname||node.local_uuid));
+  }catch(e){
+    showToast('Failed to create deficiency: '+e.message,'error');
+  }
 }
 
 /* ── Procedure Detail View ── */
@@ -11606,6 +11684,649 @@ function showSkillRoster(skill) {
   modal('👷 Qualified Roster — '+skill.code, body, async function(){}, 'Close');
 }
 
+/* ── Fleet Nodes (Sprint 6A) ─────────────────────────────────── */
+async function viewFleetNodes() {
+  setContent(el('div',{cls:'ops-loading',text:'Loading Fleet Nodes…'}));
+  var [nodes, platforms] = await Promise.all([API.altofleet.list(), API.platforms.list()]);
+  var platformMap = {};
+  platforms.forEach(p => { platformMap[p.id] = p; });
+
+  var wrap = div('ops-page');
+  var hdr  = div('ops-page-header');
+  hdr.appendChild(el('h2',{text:'🖥 Fleet Nodes'}));
+
+  // Summary badges
+  var online   = nodes.filter(n => n.status === 'online').length;
+  var offline  = nodes.filter(n => n.status === 'offline').length;
+  var degraded = nodes.filter(n => n.status === 'degraded').length;
+  var sumRow   = div('');
+  sumRow.style.cssText = 'display:flex;gap:12px;margin-top:8px;flex-wrap:wrap;';
+  [[online,'online','#22c55e'],[degraded,'degraded','#f59e0b'],[offline,'offline','#ef4444'],
+   [nodes.length,'total','#64748b']].forEach(([cnt,lbl,clr]) => {
+    var b = el('span',{html:`<strong>${cnt}</strong> ${lbl}`});
+    b.style.cssText=`background:${clr}22;color:${clr};padding:4px 12px;border-radius:20px;font-size:13px;border:1px solid ${clr}44;`;
+    sumRow.appendChild(b);
+  });
+  hdr.appendChild(sumRow);
+  wrap.appendChild(hdr);
+
+  if (!nodes.length) {
+    wrap.appendChild(el('div',{cls:'ops-empty',text:'No AltoFleet nodes registered. Install the AltoFleet agent on AltoOS machines to start monitoring.'}));
+    return setContent(wrap);
+  }
+
+  // Filter bar
+  var filterRow = div('');
+  filterRow.style.cssText = 'display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;';
+  var filterStatus = el('select');
+  filterStatus.style.cssText = 'background:#1e2540;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:4px 8px;font-size:13px;';
+  [['','All Statuses'],['online','Online'],['degraded','Degraded'],['offline','Offline']].forEach(([v,l])=>{
+    var o = el('option',{text:l}); o.value=v; filterStatus.appendChild(o);
+  });
+  filterRow.appendChild(filterStatus);
+  wrap.appendChild(filterRow);
+
+  // Node grid
+  var grid = div('');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;';
+  wrap.appendChild(grid);
+
+  function renderGrid(statusFilter) {
+    grid.innerHTML = '';
+    var filtered = statusFilter ? nodes.filter(n => n.status === statusFilter) : nodes;
+    if (!filtered.length) {
+      grid.appendChild(el('div',{cls:'ops-empty',text:'No nodes match filter.'}));
+      return;
+    }
+    filtered.forEach(node => {
+      var card = div('ops-card');
+      card.style.cssText = 'background:#1e2540;border:1px solid #334155;border-radius:10px;padding:16px;cursor:pointer;transition:border-color .15s;';
+      card.onmouseenter = () => card.style.borderColor = '#38bdf8';
+      card.onmouseleave = () => { var col={online:'#22c55e66',degraded:'#f59e0b66',offline:'#ef444466'}; card.style.borderColor = col[node.status]||'#334155'; };
+
+      var statusColor = {online:'#22c55e',degraded:'#f59e0b',offline:'#ef4444',new:'#94a3b8'}[node.status]||'#94a3b8';
+      var statusBg    = {online:'#22c55e22',degraded:'#f59e0b22',offline:'#ef444422',new:'#94a3b822'}[node.status]||'#94a3b822';
+      card.style.borderColor = statusColor + '66';
+
+      var topRow = div('');
+      topRow.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;';
+      var nameCol = div('');
+      nameCol.appendChild(el('div',{text:node.hostname||'Unknown',style:'color:#e2e8f0;font-weight:700;font-size:15px;'}));
+      nameCol.appendChild(el('div',{text:node.ip_address||'—',style:'color:#64748b;font-size:12px;'}));
+      topRow.appendChild(nameCol);
+      var badge = el('span',{text:node.status.toUpperCase()});
+      badge.style.cssText=`background:${statusBg};color:${statusColor};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid ${statusColor}44;`;
+      topRow.appendChild(badge);
+      card.appendChild(topRow);
+
+      // OS / agent info
+      var osLine = el('div',{text:(node.os_pretty_name||node.os_name||'—')+' · '+node.architecture});
+      osLine.style.cssText='color:#94a3b8;font-size:12px;margin-bottom:8px;';
+      card.appendChild(osLine);
+      var agentLine = el('div',{text:'Agent v'+node.agent_version+(platformMap[node.platform_id]?' · '+platformMap[node.platform_id].name:'')});
+      agentLine.style.cssText='color:#64748b;font-size:11px;margin-bottom:10px;';
+      card.appendChild(agentLine);
+
+      // Metric bars
+      if (node.status !== 'new') {
+        var metrics = [
+          {label:'CPU',    pct:node.cpu_pct,    color: node.cpu_pct>90?'#ef4444':node.cpu_pct>70?'#f59e0b':'#22c55e'},
+          {label:'MEM',    pct:node.memory_pct, color: node.memory_pct>90?'#ef4444':node.memory_pct>70?'#f59e0b':'#22c55e'},
+          {label:'DISK',   pct:node.disk_pct,   color: node.disk_pct>85?'#ef4444':node.disk_pct>70?'#f59e0b':'#22c55e'},
+        ];
+        var mWrap = div('');
+        mWrap.style.cssText='display:flex;flex-direction:column;gap:4px;margin-bottom:10px;';
+        metrics.forEach(m => {
+          var row = div('');
+          row.style.cssText='display:grid;grid-template-columns:36px 1fr 36px;gap:6px;align-items:center;';
+          row.appendChild(el('span',{text:m.label,style:'color:#64748b;font-size:11px;font-weight:600;'}));
+          var track = div('');
+          track.style.cssText='background:#0f172a;border-radius:4px;height:6px;overflow:hidden;';
+          var fill = div('');
+          fill.style.cssText=`background:${m.color};height:100%;width:${Math.min(100,m.pct||0).toFixed(1)}%;border-radius:4px;transition:width .3s;`;
+          track.appendChild(fill);
+          row.appendChild(track);
+          row.appendChild(el('span',{text:(m.pct||0).toFixed(0)+'%',style:'color:#94a3b8;font-size:11px;text-align:right;'}));
+          mWrap.appendChild(row);
+        });
+        card.appendChild(mWrap);
+
+        // Uptime
+        var uptimeSecs = node.uptime_secs || 0;
+        var ud = Math.floor(uptimeSecs/86400), uh = Math.floor((uptimeSecs%86400)/3600);
+        card.appendChild(el('div',{text:'Uptime: '+(ud?ud+'d ':'')+(uh?uh+'h ':'')+Math.floor((uptimeSecs%3600)/60)+'m',style:'color:#64748b;font-size:11px;margin-bottom:4px;'}));
+      }
+
+      // Alerts
+      if (node.threshold_alerts && node.threshold_alerts.length) {
+        var alertBox = div('');
+        alertBox.style.cssText='background:#ef444411;border:1px solid #ef444444;border-radius:6px;padding:6px 8px;margin-top:6px;';
+        node.threshold_alerts.slice(0,3).forEach(a => {
+          alertBox.appendChild(el('div',{text:'⚠ '+a,style:'color:#ef4444;font-size:11px;line-height:1.4;'}));
+        });
+        card.appendChild(alertBox);
+      }
+
+      // Services
+      if (node.services && typeof node.services === 'object' && Object.keys(node.services).length) {
+        var svcRow = div('');
+        svcRow.style.cssText='display:flex;gap:4px;flex-wrap:wrap;margin-top:8px;';
+        Object.entries(node.services).forEach(([svc, state]) => {
+          var ok = typeof state === 'string' && state.toLowerCase().includes('active');
+          var s = el('span',{text:svc});
+          s.style.cssText=`background:${ok?'#22c55e22':'#ef444422'};color:${ok?'#22c55e':'#ef4444'};padding:2px 6px;border-radius:4px;font-size:10px;border:1px solid ${ok?'#22c55e44':'#ef444444'};`;
+          svcRow.appendChild(s);
+        });
+        card.appendChild(svcRow);
+      }
+
+      // Last seen footer
+      var lastSeenStr = node.last_seen ? node.last_seen : 'Never';
+      card.appendChild(el('div',{text:'Last seen: '+lastSeenStr,style:'color:#334155;font-size:11px;margin-top:8px;border-top:1px solid #1e2540;padding-top:6px;'}));
+
+      card.onclick = () => navigate('fleet-detail', node.id);
+      grid.appendChild(card);
+    });
+  }
+
+  filterStatus.onchange = () => renderGrid(filterStatus.value);
+  renderGrid('');
+  setContent(wrap);
+}
+
+async function viewFleetNodeDetail(nodeId) {
+  setContent(el('div',{cls:'ops-loading',text:'Loading node…'}));
+  var [node, platforms, assets, nodeReqs, nodeCves] = await Promise.all([
+    API.altofleet.get(nodeId),
+    API.platforms.list(),
+    API.assets.list(),
+    API.software.requests({node_id: nodeId}),
+    API.altofleet.cves(nodeId).catch(()=>[]),
+  ]);
+
+  var wrap = div('ops-page');
+  var hdr  = div('ops-page-header');
+  hdr.appendChild(btn('','← Back', () => navigate('fleet-nodes')));
+  hdr.appendChild(el('h2',{text:'🖥 '+node.hostname}));
+  wrap.appendChild(hdr);
+
+  var statusColor = {online:'#22c55e',degraded:'#f59e0b',offline:'#ef4444',new:'#94a3b8'}[node.status]||'#94a3b8';
+  var badge = el('span',{text:node.status.toUpperCase()});
+  badge.style.cssText=`background:${statusColor}22;color:${statusColor};padding:4px 12px;border-radius:20px;font-size:13px;font-weight:700;border:1px solid ${statusColor}44;display:inline-block;margin-bottom:16px;`;
+  wrap.appendChild(badge);
+
+  // Two-column info grid
+  var grid = div('');
+  grid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:16px;';
+
+  function infoCard(title, rows) {
+    var c = div('');
+    c.style.cssText='background:#1e2540;border:1px solid #334155;border-radius:10px;padding:16px;';
+    c.appendChild(el('div',{text:title,style:'color:#64748b;font-size:11px;font-weight:700;letter-spacing:.05em;margin-bottom:10px;text-transform:uppercase;'}));
+    rows.forEach(([lbl,val]) => {
+      var r = div('');
+      r.style.cssText='display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e2540;font-size:13px;';
+      r.appendChild(el('span',{text:lbl,style:'color:#64748b;'}));
+      r.appendChild(el('span',{text:val||'—',style:'color:#e2e8f0;font-weight:500;'}));
+      c.appendChild(r);
+    });
+    return c;
+  }
+
+  var ud = Math.floor((node.uptime_secs||0)/86400);
+  var uh = Math.floor(((node.uptime_secs||0)%86400)/3600);
+
+  grid.appendChild(infoCard('System', [
+    ['Hostname',    node.hostname],
+    ['IP Address',  node.ip_address],
+    ['MAC Address', node.mac_address],
+    ['OS',          node.os_pretty_name || node.os_name],
+    ['Architecture',node.architecture],
+    ['Uptime',      (ud?ud+'d ':'')+(uh?uh+'h ':'')+Math.floor(((node.uptime_secs||0)%3600)/60)+'m'],
+  ]));
+
+  grid.appendChild(infoCard('Hardware', [
+    ['CPU Cores',   String(node.cpu_count)],
+    ['Memory',      Math.round((node.memory_mb||0)/1024)+' GB'],
+    ['Disk Total',  (node.disk_gb||0)+' GB'],
+    ['Disk Free',   (node.disk_free_gb||0)+' GB'],
+    ['CPU %',       (node.cpu_pct||0).toFixed(1)+'%'],
+    ['Memory %',    (node.memory_pct||0).toFixed(1)+'%'],
+    ['Disk %',      (node.disk_pct||0).toFixed(1)+'%'],
+  ]));
+
+  grid.appendChild(infoCard('Agent', [
+    ['UUID',          node.local_uuid],
+    ['Agent Version', node.agent_version],
+    ['Status',        node.status],
+    ['Last Seen',     node.last_seen || 'Never'],
+    ['Last Full CI',  node.last_full_checkin || 'Never'],
+    ['Registered',    node.registered_at],
+    ['Registered By', node.registered_by],
+  ]));
+
+  // Assignment card
+  var assignCard = div('');
+  assignCard.style.cssText='background:#1e2540;border:1px solid #334155;border-radius:10px;padding:16px;';
+  assignCard.appendChild(el('div',{text:'ASSIGNMENT',style:'color:#64748b;font-size:11px;font-weight:700;letter-spacing:.05em;margin-bottom:10px;text-transform:uppercase;'}));
+
+  var platformSel = el('select');
+  platformSel.style.cssText='width:100%;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:6px 8px;font-size:13px;margin-bottom:8px;';
+  var pOpt = el('option',{text:'— No Platform —'}); pOpt.value=''; platformSel.appendChild(pOpt);
+  platforms.forEach(p => { var o=el('option',{text:p.name}); o.value=p.id; if(node.platform_id===p.id) o.selected=true; platformSel.appendChild(o); });
+
+  var assetSel = el('select');
+  assetSel.style.cssText='width:100%;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:6px 8px;font-size:13px;margin-bottom:12px;';
+  var aOpt = el('option',{text:'— No Asset Link —'}); aOpt.value=''; assetSel.appendChild(aOpt);
+  assets.forEach(a => { var o=el('option',{text:a.asset_code+' – '+(a.asset_name||a.name||'')}); o.value=a.id; if(node.asset_id===a.id) o.selected=true; assetSel.appendChild(o); });
+
+  assignCard.appendChild(el('label',{text:'Platform',style:'color:#94a3b8;font-size:12px;display:block;margin-bottom:4px;'}));
+  assignCard.appendChild(platformSel);
+  assignCard.appendChild(el('label',{text:'Linked Asset',style:'color:#94a3b8;font-size:12px;display:block;margin-bottom:4px;'}));
+  assignCard.appendChild(assetSel);
+
+  var saveBtn = btn('primary','Save Assignment', async () => {
+    await API.altofleet.update(nodeId, {
+      platform_id: platformSel.value ? parseInt(platformSel.value) : null,
+      asset_id:    assetSel.value    ? parseInt(assetSel.value)    : null,
+    });
+    navigate('fleet-detail', nodeId);
+  });
+  assignCard.appendChild(saveBtn);
+
+  var delBtn = btn('danger','Remove Node', async () => {
+    if (!confirm('Remove this node from the registry?')) return;
+    await API.altofleet.destroy(nodeId);
+    navigate('fleet-nodes');
+  });
+  delBtn.style.marginLeft='8px';
+  assignCard.appendChild(delBtn);
+
+  grid.appendChild(assignCard);
+  wrap.appendChild(grid);
+
+  // Services table
+  if (node.services && typeof node.services === 'object' && Object.keys(node.services).length) {
+    var svcHdr = el('h3',{text:'Services',style:'color:#94a3b8;font-size:14px;font-weight:600;margin:20px 0 10px;'});
+    wrap.appendChild(svcHdr);
+    var svcGrid = div('');
+    svcGrid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;';
+    Object.entries(node.services).forEach(([svc, state]) => {
+      var ok = typeof state === 'string' && state.toLowerCase().includes('active');
+      var s = div('');
+      s.style.cssText=`background:${ok?'#22c55e11':'#ef444411'};border:1px solid ${ok?'#22c55e44':'#ef444444'};border-radius:8px;padding:10px;`;
+      s.appendChild(el('div',{text:svc,style:'color:#e2e8f0;font-weight:600;font-size:13px;margin-bottom:2px;'}));
+      s.appendChild(el('div',{text:state,style:`color:${ok?'#22c55e':'#ef4444'};font-size:11px;`}));
+      svcGrid.appendChild(s);
+    });
+    wrap.appendChild(svcGrid);
+  }
+
+  // Threshold alerts
+  if (node.threshold_alerts && node.threshold_alerts.length) {
+    var altHdr = el('h3',{text:'Active Alerts',style:'color:#ef4444;font-size:14px;font-weight:600;margin:20px 0 10px;'});
+    wrap.appendChild(altHdr);
+    var altBox = div('');
+    altBox.style.cssText='background:#ef444411;border:1px solid #ef444444;border-radius:10px;padding:12px 16px;';
+    node.threshold_alerts.forEach(a => {
+      altBox.appendChild(el('div',{text:'⚠ '+a,style:'color:#ef4444;font-size:13px;line-height:1.8;'}));
+    });
+    wrap.appendChild(altBox);
+  }
+
+  // Software requests for this node
+  var swHdr = div('');
+  swHdr.style.cssText='display:flex;align-items:center;justify-content:space-between;margin:24px 0 10px;';
+  swHdr.appendChild(el('h3',{text:'Software Requests',style:'color:#94a3b8;font-size:14px;font-weight:600;margin:0;'}));
+  swHdr.appendChild(btn('primary ops-btn-sm','+ Request Software', () => swRequestModal(nodeId)));
+  wrap.appendChild(swHdr);
+
+  if (nodeReqs.length) {
+    var swBox = div('');
+    nodeReqs.forEach(r => {
+      var row = div('');
+      row.style.cssText='display:flex;align-items:center;gap:10px;background:#0f172a;border:1px solid #1e3050;border-radius:8px;padding:10px 14px;margin-bottom:6px;';
+      row.appendChild(el('span',{text:r.catalog?.icon||'📦',style:'font-size:18px;'}));
+      var info = div('');
+      info.style.flex='1';
+      info.appendChild(el('div',{text:r.catalog?.name||'Unknown',style:'font-size:13px;font-weight:600;color:#e2e8f0;'}));
+      info.appendChild(el('div',{text:r.catalog?.package_name||'',style:'font-size:11px;color:#38bdf8;font-family:monospace;'}));
+      var sColor={pending:'#f59e0b',approved:'#38bdf8',installed:'#22c55e',rejected:'#ef4444',failed:'#f87171'}[r.status]||'#64748b';
+      var sb=el('span',{text:r.status.toUpperCase()});
+      sb.style.cssText='font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;background:'+sColor+'22;color:'+sColor+';border:1px solid '+sColor+'44;';
+      row.appendChild(info);
+      row.appendChild(sb);
+      swBox.appendChild(row);
+    });
+    wrap.appendChild(swBox);
+  } else {
+    var swEmpty = el('div',{text:'No software requests for this node.',style:'color:#334155;font-size:13px;padding:12px;'});
+    wrap.appendChild(swEmpty);
+  }
+
+  // CVE Scan Results
+  var cveHdr = div('');
+  cveHdr.style.cssText='display:flex;align-items:center;justify-content:space-between;margin:28px 0 10px;';
+  var cveTitleEl = el('h3',{text:'CVE / Vulnerability Scan',style:'color:#94a3b8;font-size:14px;font-weight:600;margin:0;'});
+  cveHdr.appendChild(cveTitleEl);
+  if (node.last_cve_scan) {
+    cveHdr.appendChild(el('span',{text:'Last scan: '+node.last_cve_scan,style:'color:#475569;font-size:11px;'}));
+  } else {
+    cveHdr.appendChild(el('span',{text:'No scan yet — agent will run on next check-in',style:'color:#475569;font-size:11px;'}));
+  }
+  wrap.appendChild(cveHdr);
+
+  if (nodeCves.length) {
+    var SEV_COLOR = {CRITICAL:'#ef4444',HIGH:'#f97316',MEDIUM:'#f59e0b',LOW:'#22c55e',UNKNOWN:'#64748b'};
+    var bySev = {};
+    nodeCves.forEach(c => { (bySev[c.severity]||(bySev[c.severity]=[])).push(c); });
+    ['CRITICAL','HIGH','MEDIUM','LOW','UNKNOWN'].forEach(sev => {
+      if (!bySev[sev]) return;
+      var color = SEV_COLOR[sev]||'#64748b';
+      wrap.appendChild(el('div',{text:sev+' ('+bySev[sev].length+')',style:'color:'+color+';font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:12px 0 6px;'}));
+      bySev[sev].forEach(c => {
+        var row = div('');
+        row.style.cssText='display:flex;align-items:flex-start;gap:12px;background:#0f172a;border:1px solid '+color+'33;border-radius:8px;padding:10px 14px;margin-bottom:6px;';
+        var left = div('');
+        left.style.flex='1';
+        var cveIdEl = el('div',{text:c.cve_id||'CVE-Unknown',style:'font-weight:700;font-size:13px;color:#e2e8f0;margin-bottom:2px;'});
+        var pkgEl  = el('div',{text:c.package_name+' '+c.installed_version+(c.fixed_version?' → fix: '+c.fixed_version:''),style:'font-size:11px;color:#38bdf8;font-family:monospace;margin-bottom:4px;'});
+        var descEl = el('div',{text:c.description,style:'font-size:11px;color:#64748b;line-height:1.5;'});
+        left.appendChild(cveIdEl);
+        left.appendChild(pkgEl);
+        if (c.description) left.appendChild(descEl);
+        row.appendChild(left);
+        if (c.cvss_score) {
+          var scoreEl = el('div',{text:'CVSS\n'+c.cvss_score});
+          scoreEl.style.cssText='text-align:center;font-size:10px;font-weight:700;color:'+color+';white-space:pre;flex-shrink:0;';
+          row.appendChild(scoreEl);
+        }
+        wrap.appendChild(row);
+      });
+    });
+  } else if (node.last_cve_scan) {
+    var cveOk = div('');
+    cveOk.style.cssText='background:#22c55e11;border:1px solid #22c55e44;border-radius:10px;padding:14px;color:#22c55e;font-size:13px;';
+    cveOk.textContent='✓ No vulnerabilities detected on last scan ('+node.last_cve_scan+')';
+    wrap.appendChild(cveOk);
+  } else {
+    wrap.appendChild(el('div',{text:'CVE scan pending — agent will run trivy on the next 7-day cycle.',style:'color:#334155;font-size:13px;padding:12px;'}));
+  }
+
+  setContent(wrap);
+}
+
+async function swRequestModal(nodeId) {
+  var catalog = await API.software.catalog();
+  if (!catalog.length) { alert('No software in catalog. Ask an admin to add items.'); return; }
+  var opts = catalog.map(i=>'<option value="'+i.id+'">'+i.name+' ('+i.package_name+')</option>').join('');
+  openModal('Request Software for Node #'+nodeId, `
+    <div style="display:grid;gap:12px;">
+      <div>
+        <label style="color:#94a3b8;font-size:12px;">Software</label><br>
+        <select id="sw-req-cat" class="ops-input" style="width:100%;">${opts}</select>
+      </div>
+      <div>
+        <label style="color:#94a3b8;font-size:12px;">Notes / Justification</label><br>
+        <textarea id="sw-req-notes" class="ops-input" style="width:100%;height:60px;" placeholder="Why is this software needed?"></textarea>
+      </div>
+    </div>
+  `, async () => {
+    await API.software.createRequest({
+      node_id:    nodeId,
+      catalog_id: parseInt(document.getElementById('sw-req-cat').value),
+      notes:      document.getElementById('sw-req-notes').value.trim(),
+    });
+    closeModal();
+    showToast('Software request submitted');
+    viewFleetNodeDetail(nodeId);
+  }, 'Submit Request');
+}
+
+/* ── Software Catalog (Sprint 6B) ────────────────────────────── */
+var _swCatalogItems = [];
+var _swCatalogTab = 'catalog'; // 'catalog' | 'requests'
+
+async function viewSoftwareCatalog(tab) {
+  if (tab) _swCatalogTab = tab;
+  setContent(el('div',{cls:'ops-loading',text:'Loading Software Catalog…'}));
+  await getUserRole();
+  var [catalog, requests] = await Promise.all([
+    API.software.catalog(),
+    API.software.requests()
+  ]);
+  _swCatalogItems = catalog;
+
+  var wrap = div('ops-page-wrap');
+
+  // Header
+  var hdr = div('ops-page-header');
+  hdr.appendChild(el('h2',{text:'📦 Software Catalog'}));
+  var hdrRight = div('');
+  hdrRight.style.cssText='display:flex;gap:8px;align-items:center;';
+  if (_userRole.can_admin) {
+    hdrRight.appendChild(btn('primary','+ Add Software', () => swCatalogAddModal()));
+  }
+  hdr.appendChild(hdrRight);
+  wrap.appendChild(hdr);
+
+  // Tabs
+  var tabBar = div('');
+  tabBar.style.cssText='display:flex;gap:0;border-bottom:2px solid #1e293b;margin-bottom:20px;';
+  [{id:'catalog',label:'Catalog'},{id:'requests',label:'Requests ('+requests.filter(r=>r.status==='pending').length+' pending)'}].forEach(t=>{
+    var tb = el('div',{text:t.label});
+    tb.style.cssText='padding:8px 24px;cursor:pointer;font-size:13px;font-weight:600;'
+      +(_swCatalogTab===t.id ? 'border-bottom:2px solid #38bdf8;color:#38bdf8;margin-bottom:-2px;' : 'color:#64748b;');
+    tb.onclick=()=>viewSoftwareCatalog(t.id);
+    tabBar.appendChild(tb);
+  });
+  wrap.appendChild(tabBar);
+
+  if (_swCatalogTab === 'catalog') {
+    swRenderCatalog(wrap, catalog);
+  } else {
+    swRenderRequests(wrap, requests);
+  }
+
+  setContent(wrap);
+}
+
+var SW_TIER_COLORS = {1:'#22c55e',2:'#38bdf8',3:'#f59e0b',4:'#ef4444'};
+var SW_TIER_LABELS = {1:'Free',2:'Standard',3:'Professional',4:'Restricted'};
+
+function swRenderCatalog(wrap, catalog) {
+  var categories = [...new Set(catalog.map(i=>i.category))].sort();
+
+  categories.forEach(cat => {
+    var items = catalog.filter(i=>i.category===cat);
+    wrap.appendChild(el('h3',{text:cat,style:'color:#94a3b8;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:20px 0 10px;'}));
+    var grid = div('');
+    grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;';
+    items.forEach(item => {
+      var card = div('ops-card');
+      card.style.cssText='background:#0f172a;border:1px solid #1e3050;border-radius:12px;padding:16px;cursor:pointer;transition:border-color .15s;';
+      card.onmouseover=()=>card.style.borderColor='#38bdf8';
+      card.onmouseout=()=>card.style.borderColor='#1e3050';
+
+      var top = div('');
+      top.style.cssText='display:flex;align-items:flex-start;gap:12px;';
+      var iconEl = el('div',{text:item.icon});
+      iconEl.style.cssText='font-size:28px;flex-shrink:0;';
+      var info = div('');
+      info.appendChild(el('div',{text:item.name,style:'font-weight:700;font-size:14px;color:#e2e8f0;'}));
+      info.appendChild(el('div',{text:item.package_name,style:'font-size:11px;color:#38bdf8;font-family:monospace;margin:2px 0;'}));
+      info.appendChild(el('div',{text:item.description,style:'font-size:12px;color:#64748b;margin-top:4px;line-height:1.4;'}));
+      top.appendChild(iconEl);
+      top.appendChild(info);
+      card.appendChild(top);
+
+      var badges = div('');
+      badges.style.cssText='display:flex;gap:6px;margin-top:12px;align-items:center;';
+      var tierBadge = el('span',{text:'Tier '+item.tier+': '+item.tier_label});
+      tierBadge.style.cssText='font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;background:'+(SW_TIER_COLORS[item.tier]||'#64748b')+'22;color:'+(SW_TIER_COLORS[item.tier]||'#64748b')+';border:1px solid '+(SW_TIER_COLORS[item.tier]||'#64748b')+'44;';
+      badges.appendChild(tierBadge);
+      if (item.auto_approve) {
+        var ab = el('span',{text:'Auto-approve'});
+        ab.style.cssText='font-size:10px;padding:2px 8px;border-radius:4px;background:#22c55e22;color:#22c55e;border:1px solid #22c55e44;';
+        badges.appendChild(ab);
+      }
+      card.appendChild(badges);
+
+      if (_userRole.can_admin) {
+        var actions = div('');
+        actions.style.cssText='display:flex;gap:6px;margin-top:12px;';
+        actions.appendChild(btn('ghost ops-btn-sm','Edit', e=>{e.stopPropagation();swCatalogEditModal(item);}));
+        actions.appendChild(btn('ghost ops-btn-sm','Delete', async e=>{
+          e.stopPropagation();
+          if(!confirm('Remove "'+item.name+'" from catalog?')) return;
+          await API.software.deleteCatalog(item.id);
+          viewSoftwareCatalog('catalog');
+        }));
+        card.appendChild(actions);
+      }
+      grid.appendChild(card);
+    });
+    wrap.appendChild(grid);
+  });
+
+  if (!catalog.length) {
+    wrap.appendChild(el('div',{cls:'ops-empty',text:'No software in catalog yet. Admins can add items.'}));
+  }
+}
+
+function swRenderRequests(wrap, requests) {
+  var pending  = requests.filter(r=>r.status==='pending');
+  var approved = requests.filter(r=>r.status==='approved');
+  var other    = requests.filter(r=>!['pending','approved'].includes(r.status));
+
+  function swReqRow(r) {
+    var row = div('');
+    row.style.cssText='display:flex;align-items:center;gap:12px;background:#0f172a;border:1px solid #1e3050;border-radius:10px;padding:14px;margin-bottom:8px;';
+    var icon = el('div',{text:r.catalog?.icon||'📦'});
+    icon.style.cssText='font-size:22px;flex-shrink:0;';
+    var info = div('');
+    info.style.cssText='flex:1;min-width:0;';
+    info.appendChild(el('div',{text:(r.catalog?.name||'Unknown'),style:'font-weight:600;font-size:13px;color:#e2e8f0;'}));
+    info.appendChild(el('div',{text:(r.node_hostname||'Node #'+r.node_id)+' · requested by '+r.requested_by,style:'font-size:11px;color:#64748b;margin-top:2px;'}));
+    var statColor = {pending:'#f59e0b',approved:'#38bdf8',installed:'#22c55e',rejected:'#ef4444',failed:'#f87171'}[r.status]||'#64748b';
+    var statBadge = el('span',{text:r.status.toUpperCase()});
+    statBadge.style.cssText='font-size:10px;font-weight:700;padding:2px 10px;border-radius:4px;background:'+statColor+'22;color:'+statColor+';border:1px solid '+statColor+'44;flex-shrink:0;';
+    row.appendChild(icon);
+    row.appendChild(info);
+    row.appendChild(statBadge);
+    if (r.status==='pending' && _userRole.can_admin) {
+      var approveBtn = btn('primary ops-btn-sm','Approve', async () => {
+        await API.software.approve(r.id);
+        viewSoftwareCatalog('requests');
+      });
+      var rejectBtn = btn('danger ops-btn-sm','Reject', async () => {
+        var notes = prompt('Rejection reason (optional):','');
+        await API.software.reject(r.id, {notes});
+        viewSoftwareCatalog('requests');
+      });
+      approveBtn.style.marginLeft='8px';
+      rejectBtn.style.marginLeft='4px';
+      row.appendChild(approveBtn);
+      row.appendChild(rejectBtn);
+    }
+    return row;
+  }
+
+  if (pending.length) {
+    wrap.appendChild(el('h3',{text:'Pending Approval ('+pending.length+')',style:'color:#f59e0b;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 10px;'}));
+    pending.forEach(r=>wrap.appendChild(swReqRow(r)));
+  }
+  if (approved.length) {
+    wrap.appendChild(el('h3',{text:'Approved — Queued for Install ('+approved.length+')',style:'color:#38bdf8;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:20px 0 10px;'}));
+    approved.forEach(r=>wrap.appendChild(swReqRow(r)));
+  }
+  if (other.length) {
+    wrap.appendChild(el('h3',{text:'History',style:'color:#64748b;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:20px 0 10px;'}));
+    other.forEach(r=>wrap.appendChild(swReqRow(r)));
+  }
+  if (!requests.length) {
+    wrap.appendChild(el('div',{cls:'ops-empty',text:'No software requests yet.'}));
+  }
+}
+
+async function viewSoftwareRequests() { return viewSoftwareCatalog('requests'); }
+
+function swCatalogAddModal() {
+  openModal('Add Software to Catalog', `
+    <div style="display:grid;gap:12px;">
+      <div><label style="color:#94a3b8;font-size:12px;">Name</label><br><input id="sw-name" class="ops-input" placeholder="e.g. VLC Media Player" style="width:100%;"></div>
+      <div><label style="color:#94a3b8;font-size:12px;">Package Name (apt)</label><br><input id="sw-pkg" class="ops-input" placeholder="e.g. vlc" style="width:100%;font-family:monospace;"></div>
+      <div><label style="color:#94a3b8;font-size:12px;">Description</label><br><textarea id="sw-desc" class="ops-input" style="width:100%;height:60px;"></textarea></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div><label style="color:#94a3b8;font-size:12px;">Category</label><br>
+          <select id="sw-cat" class="ops-input" style="width:100%;">
+            <option>General</option><option>Office</option><option>Media</option>
+            <option>Development</option><option>Security</option><option>Network</option>
+            <option>Graphics</option><option>Communication</option>
+          </select></div>
+        <div><label style="color:#94a3b8;font-size:12px;">Tier</label><br>
+          <select id="sw-tier" class="ops-input" style="width:100%;">
+            <option value="1">1 — Free</option>
+            <option value="2">2 — Standard</option>
+            <option value="3">3 — Professional</option>
+            <option value="4">4 — Restricted</option>
+          </select></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="sw-auto" style="width:16px;height:16px;">
+        <label for="sw-auto" style="color:#94a3b8;font-size:12px;">Auto-approve (Tier 1 only — skips approval workflow)</label>
+      </div>
+    </div>
+  `, async () => {
+    await API.software.createCatalog({
+      name:         document.getElementById('sw-name').value.trim(),
+      package_name: document.getElementById('sw-pkg').value.trim(),
+      description:  document.getElementById('sw-desc').value.trim(),
+      category:     document.getElementById('sw-cat').value,
+      tier:         parseInt(document.getElementById('sw-tier').value),
+      auto_approve: document.getElementById('sw-auto').checked,
+      icon:         '📦',
+    });
+    closeModal();
+    viewSoftwareCatalog('catalog');
+  }, 'Add to Catalog');
+}
+
+function swCatalogEditModal(item) {
+  openModal('Edit: '+item.name, `
+    <div style="display:grid;gap:12px;">
+      <div><label style="color:#94a3b8;font-size:12px;">Name</label><br><input id="sw-name" class="ops-input" value="${escH(item.name)}" style="width:100%;"></div>
+      <div><label style="color:#94a3b8;font-size:12px;">Package Name (apt)</label><br><input id="sw-pkg" class="ops-input" value="${escH(item.package_name)}" style="width:100%;font-family:monospace;"></div>
+      <div><label style="color:#94a3b8;font-size:12px;">Description</label><br><textarea id="sw-desc" class="ops-input" style="width:100%;height:60px;">${escH(item.description)}</textarea></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div><label style="color:#94a3b8;font-size:12px;">Category</label><br>
+          <select id="sw-cat" class="ops-input" style="width:100%;">
+            ${['General','Office','Media','Development','Security','Network','Graphics','Communication'].map(c=>'<option'+(c===item.category?' selected':'')+'>'+c+'</option>').join('')}
+          </select></div>
+        <div><label style="color:#94a3b8;font-size:12px;">Tier</label><br>
+          <select id="sw-tier" class="ops-input" style="width:100%;">
+            ${[1,2,3,4].map(t=>'<option value="'+t+'"'+(t===item.tier?' selected':'')+'>'+t+' — '+SW_TIER_LABELS[t]+'</option>').join('')}
+          </select></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="sw-auto" style="width:16px;height:16px;"${item.auto_approve?' checked':''}>
+        <label for="sw-auto" style="color:#94a3b8;font-size:12px;">Auto-approve</label>
+      </div>
+    </div>
+  `, async () => {
+    await API.software.updateCatalog(item.id, {
+      name:         document.getElementById('sw-name').value.trim(),
+      package_name: document.getElementById('sw-pkg').value.trim(),
+      description:  document.getElementById('sw-desc').value.trim(),
+      category:     document.getElementById('sw-cat').value,
+      tier:         parseInt(document.getElementById('sw-tier').value),
+      auto_approve: document.getElementById('sw-auto').checked,
+    });
+    closeModal();
+    viewSoftwareCatalog('catalog');
+  }, 'Save Changes');
+}
+
 function buildSidebar() {
   var nav=document.getElementById('ops-sidebar');
   if(!nav) return;
@@ -11630,6 +12351,8 @@ function buildSidebar() {
     {label:'Skills Catalog',   route:'skills-catalog',icon:'🎓'},
     {label:'Training',         route:'training',      icon:'📋'},
     {label:'QR Scan',          route:'qr-scan',       icon:'🔲', section:'Tools'},
+    {label:'Fleet Nodes',      route:'fleet-nodes',      icon:'🖥', section:'Infrastructure'},
+    {label:'Software Catalog', route:'software-catalog', icon:'📦'},
     {label:'Data Import',      route:'imports',       icon:'📥', section:'Admin'},
     {label:'Settings',         route:'settings',      icon:'⚙'},
     {label:'User Manual',      route:'manual',        icon:'📖'},
@@ -11696,6 +12419,10 @@ async function dispatch(route, param) {
     else if (route==='supply-detail')   await viewSupplyRequestDetail(parseInt(param));
     else if (route==='inventory')       await viewInventory();
     else if (route==='inv-detail')      await viewInventoryDetail(parseInt(param));
+    else if (route==='fleet-nodes')        await viewFleetNodes();
+    else if (route==='fleet-detail')       await viewFleetNodeDetail(parseInt(param));
+    else if (route==='software-catalog')   await viewSoftwareCatalog();
+    else if (route==='software-requests')  await viewSoftwareRequests();
     else if (route==='settings')        await viewSettings();
     else if (route==='manual')         await viewUserManual();
     else if (route==='platforms')     await viewPlatforms();
