@@ -1,5 +1,5 @@
 /**
- * OpsSuite v3.23.4
+ * OpsSuite v3.23.5
  * Sprint 0A/0B: shops, asset coding (TYPE-SHOP-POSITION), criticality,
  * readiness engine, local_uuid offline sync foundation.
  */
@@ -12258,42 +12258,75 @@ function swRenderRequests(wrap, requests) {
 async function viewSoftwareRequests() { return viewSoftwareCatalog('requests'); }
 
 function swCatalogAddModal() {
-  openModal('Add Software to Catalog', `
-    <div style="display:grid;gap:12px;">
-      <div><label style="color:#94a3b8;font-size:12px;">Name</label><br><input id="sw-name" class="ops-input" placeholder="e.g. VLC Media Player" style="width:100%;"></div>
-      <div><label style="color:#94a3b8;font-size:12px;">Package Name (apt)</label><br><input id="sw-pkg" class="ops-input" placeholder="e.g. vlc" style="width:100%;font-family:monospace;"></div>
-      <div><label style="color:#94a3b8;font-size:12px;">Description</label><br><textarea id="sw-desc" class="ops-input" style="width:100%;height:60px;"></textarea></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div><label style="color:#94a3b8;font-size:12px;">Category</label><br>
-          <select id="sw-cat" class="ops-input" style="width:100%;">
-            <option>General</option><option>Office</option><option>Media</option>
-            <option>Development</option><option>Security</option><option>Network</option>
-            <option>Graphics</option><option>Communication</option>
-          </select></div>
-        <div><label style="color:#94a3b8;font-size:12px;">Tier</label><br>
-          <select id="sw-tier" class="ops-input" style="width:100%;">
-            <option value="1">1 — Free</option>
-            <option value="2">2 — Standard</option>
-            <option value="3">3 — Professional</option>
-            <option value="4">4 — Restricted</option>
-          </select></div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <input type="checkbox" id="sw-auto" style="width:16px;height:16px;">
-        <label for="sw-auto" style="color:#94a3b8;font-size:12px;">Auto-approve (Tier 1 only — skips approval workflow)</label>
-      </div>
-    </div>
-  `, async () => {
+  var wrap = el('div', {style:'display:grid;gap:12px;'});
+
+  var nameInp = el('input', {cls:'ops-input', placeholder:'e.g. VLC Media Player', style:'width:100%;'});
+  wrap.appendChild(fg('Name', nameInp, true));
+
+  var pkgInp  = el('input', {cls:'ops-input', placeholder:'e.g. vlc', style:'width:100%;font-family:monospace;'});
+  var pkgStatus = el('div', {style:'font-size:11px;margin-top:4px;min-height:16px;'});
+  var pkgWrap = div('');
+  pkgWrap.appendChild(pkgInp);
+  pkgWrap.appendChild(pkgStatus);
+  wrap.appendChild(fg('Package Name (apt)', pkgWrap, true));
+
+  var descTa = el('textarea', {cls:'ops-input', style:'width:100%;height:60px;'});
+  wrap.appendChild(fg('Description', descTa, true));
+
+  var row = el('div', {style:'display:grid;grid-template-columns:1fr 1fr;gap:12px;'});
+  var catSel = sel([['General','General'],['Office','Office'],['Media','Media'],
+    ['Development','Development'],['Security','Security'],['Network','Network'],
+    ['Graphics','Graphics'],['Communication','Communication']], 'General');
+  var tierSel = sel([[1,'1 — Free'],[2,'2 — Standard'],[3,'3 — Professional'],[4,'4 — Restricted']], 1);
+  row.appendChild(fg('Category', catSel));
+  row.appendChild(fg('Tier', tierSel));
+  wrap.appendChild(row);
+
+  var autoChk = el('input', {type:'checkbox', style:'width:16px;height:16px;'});
+  var autoRow = el('div', {style:'display:flex;align-items:center;gap:8px;'});
+  autoRow.appendChild(autoChk);
+  autoRow.appendChild(el('label', {cls:'ops-form-label', text:'Auto-approve (Tier 1 only — skips approval workflow)'}));
+  wrap.appendChild(autoRow);
+
+  var _repologyTimer = null;
+  pkgInp.addEventListener('input', function() {
+    clearTimeout(_repologyTimer);
+    var pkg = pkgInp.value.trim();
+    if (!pkg) { pkgStatus.textContent = ''; return; }
+    pkgStatus.style.color = '#64748b';
+    pkgStatus.textContent = 'Checking…';
+    _repologyTimer = setTimeout(async function() {
+      try {
+        var r = await fetch('https://repology.org/api/v1/project/' + encodeURIComponent(pkg));
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var data = await r.json();
+        var found = Array.isArray(data) && data.some(function(e) {
+          return e.repo && /ubuntu|debian/.test(e.repo);
+        });
+        if (found) {
+          pkgStatus.style.color = '#22c55e';
+          pkgStatus.textContent = '✓ Found in Ubuntu/Debian repos';
+        } else {
+          pkgStatus.style.color = '#f59e0b';
+          pkgStatus.textContent = '⚠ Not found in Ubuntu/Debian — verify package name before saving';
+        }
+      } catch(e) {
+        pkgStatus.style.color = '#64748b';
+        pkgStatus.textContent = 'Could not reach Repology — package name unverified';
+      }
+    }, 500);
+  });
+
+  modal('Add Software to Catalog', wrap, async function() {
     await API.software.createCatalog({
-      name:         document.getElementById('sw-name').value.trim(),
-      package_name: document.getElementById('sw-pkg').value.trim(),
-      description:  document.getElementById('sw-desc').value.trim(),
-      category:     document.getElementById('sw-cat').value,
-      tier:         parseInt(document.getElementById('sw-tier').value),
-      auto_approve: document.getElementById('sw-auto').checked,
+      name:         nameInp.value.trim(),
+      package_name: pkgInp.value.trim(),
+      description:  descTa.value.trim(),
+      category:     catSel.value,
+      tier:         parseInt(tierSel.value),
+      auto_approve: autoChk.checked,
       icon:         '📦',
     });
-    closeModal();
     viewSoftwareCatalog('catalog');
   }, 'Add to Catalog');
 }
