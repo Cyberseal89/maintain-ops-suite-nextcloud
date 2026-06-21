@@ -213,6 +213,34 @@ class SoftwareCatalogController extends Controller {
     }
 
     /** @NoAdminRequired */
+    public function repologyCheck(): DataResponse {
+        $pkg = trim($this->request->getParam('pkg', ''));
+        if ($pkg === '' || !preg_match('/^[a-z0-9][a-z0-9+\-.]+$/i', $pkg)) {
+            return new DataResponse(['found' => false, 'error' => 'invalid']);
+        }
+        $url = 'https://repology.org/api/v1/project/' . urlencode($pkg);
+        $ctx = stream_context_create(['http' => [
+            'timeout' => 6,
+            'header'  => "User-Agent: MaintainOpsSuite/1.0\r\n",
+        ]]);
+        $body = @file_get_contents($url, false, $ctx);
+        if ($body === false) {
+            return new DataResponse(['found' => false, 'error' => 'unreachable']);
+        }
+        $data  = json_decode($body, true);
+        $found = false;
+        if (is_array($data)) {
+            foreach ($data as $entry) {
+                if (isset($entry['repo']) && preg_match('/ubuntu|debian/i', $entry['repo'])) {
+                    $found = true;
+                    break;
+                }
+            }
+        }
+        return new DataResponse(['found' => $found]);
+    }
+
+    /** @NoAdminRequired */
     public function requestConfirm(int $id): DataResponse {
         $now    = date('Y-m-d H:i:s');
         $data   = $this->request->getParams();

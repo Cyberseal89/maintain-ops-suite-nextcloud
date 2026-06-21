@@ -1,5 +1,5 @@
 /**
- * OpsSuite v3.23.5
+ * OpsSuite v3.23.6
  * Sprint 0A/0B: shops, asset coding (TYPE-SHOP-POSITION), criticality,
  * readiness engine, local_uuid offline sync foundation.
  */
@@ -12297,13 +12297,11 @@ function swCatalogAddModal() {
     pkgStatus.textContent = 'Checking…';
     _repologyTimer = setTimeout(async function() {
       try {
-        var r = await fetch('https://repology.org/api/v1/project/' + encodeURIComponent(pkg));
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        var data = await r.json();
-        var found = Array.isArray(data) && data.some(function(e) {
-          return e.repo && /ubuntu|debian/.test(e.repo);
-        });
-        if (found) {
+        var data = await req('GET', '/api/software/repology?pkg=' + encodeURIComponent(pkg));
+        if (data.error === 'unreachable') {
+          pkgStatus.style.color = '#64748b';
+          pkgStatus.textContent = 'Could not reach Repology — package name unverified';
+        } else if (data.found) {
           pkgStatus.style.color = '#22c55e';
           pkgStatus.textContent = '✓ Found in Ubuntu/Debian repos';
         } else {

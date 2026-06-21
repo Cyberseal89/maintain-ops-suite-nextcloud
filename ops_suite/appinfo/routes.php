@@ -313,6 +313,7 @@ return [
         ['name' => 'software_catalog#requestCreate',  'url' => '/api/software/requests',                   'verb' => 'POST'],
         ['name' => 'software_catalog#requestApprove', 'url' => '/api/software/requests/{id}/approve',      'verb' => 'POST'],
         ['name' => 'software_catalog#requestReject',  'url' => '/api/software/requests/{id}/reject',       'verb' => 'POST'],
-        ['name' => 'software_catalog#requestConfirm', 'url' => '/api/software/requests/{id}/confirm',      'verb' => 'POST'],
+        ['name' => 'software_catalog#requestConfirm',  'url' => '/api/software/requests/{id}/confirm',      'verb' => 'POST'],
+        ['name' => 'software_catalog#repologyCheck',  'url' => '/api/software/repology',                   'verb' => 'GET'],
     ],
 ];
