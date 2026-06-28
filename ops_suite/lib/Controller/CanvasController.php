@@ -149,7 +149,7 @@ class CanvasController extends Controller {
         foreach ($qb->executeQuery()->fetchAllAssociative() as $row) {
             $aid = (int)$row['asset_id'];
             if (isset($result[$aid])) {
-                $result[$aid]['sev']       = (int)$row['min_sev'];
+                $result[$aid]['sev']       = (int)substr($row['min_sev'], 4);
                 $result[$aid]['sev_count'] = (int)$row['cnt'];
             }
         }

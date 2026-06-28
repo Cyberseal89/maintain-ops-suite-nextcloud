@@ -15,7 +15,10 @@ class SoftwareCatalogItem extends Entity implements \JsonSerializable {
     protected $createdAt;
     protected $updatedAt;
 
-    public function __construct() { parent::__construct(); }
+    public function __construct() {
+        $this->addType('autoApprove', 'boolean');
+        $this->addType('enabled', 'boolean');
+    }
 
     public function jsonSerialize(): array {
         return [

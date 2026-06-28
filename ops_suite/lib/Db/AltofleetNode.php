@@ -33,12 +33,21 @@ use OCP\AppFramework\Db\Entity;
  * @method string getLastSeen()           @method void setLastSeen(string $v)
  * @method string  getLastFullCheckin()    @method void setLastFullCheckin(string $v)
  * @method ?string getLastCveScan()        @method void setLastCveScan(?string $v)
+ * @method bool   getForceScan()           @method void setForceScan(bool $v)
+ * @method bool   getPendingUpdate()       @method void setPendingUpdate(bool $v)
+ * @method ?bool  getTrivyDbReady()        @method void setTrivyDbReady(?bool $v)
  * @method string getRegisteredBy()       @method void setRegisteredBy(string $v)
  * @method string getRegisteredAt()       @method void setRegisteredAt(string $v)
  * @method string getCreatedAt()          @method void setCreatedAt(string $v)
  * @method string getUpdatedAt()          @method void setUpdatedAt(string $v)
  */
 class AltofleetNode extends Entity implements \JsonSerializable {
+    public function __construct() {
+        $this->addType('forceScan', 'boolean');
+        $this->addType('pendingUpdate', 'boolean');
+        $this->addType('trivyDbReady', 'boolean');
+    }
+
     protected string $localUuid       = '';
     protected ?int   $assetId         = null;
     protected ?int   $platformId      = null;
@@ -65,6 +74,9 @@ class AltofleetNode extends Entity implements \JsonSerializable {
     protected string $lastSeen        = '';
     protected string  $lastFullCheckin = '';
     protected ?string $lastCveScan    = null;
+    protected bool   $forceScan      = false;
+    protected bool   $pendingUpdate  = false;
+    protected ?bool  $trivyDbReady   = null;
     protected string $registeredBy   = '';
     protected string $registeredAt    = '';
     protected string $createdAt       = '';
@@ -99,6 +111,9 @@ class AltofleetNode extends Entity implements \JsonSerializable {
             'last_seen'         => $this->lastSeen,
             'last_full_checkin' => $this->lastFullCheckin,
             'last_cve_scan'     => $this->lastCveScan,
+            'force_scan'        => (bool)$this->forceScan,
+            'pending_update'    => (bool)$this->pendingUpdate,
+            'trivy_db_ready'    => $this->trivyDbReady,
             'registered_by'     => $this->registeredBy,
             'registered_at'     => $this->registeredAt,
             'created_at'        => $this->createdAt,

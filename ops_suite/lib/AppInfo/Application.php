@@ -10,6 +10,7 @@ use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
+use OCP\BackgroundJob\IJobList;
 use OCP\Files\IRootFolder;
 use OCP\IUserSession;
 
@@ -22,31 +23,45 @@ class Application extends App implements IBootstrap {
     }
 
     public function register(IRegistrationContext $context): void {
-        $context->registerRepairStep(SeedFailureModes::class);
-        $context->registerNotifier(Notifier::class);
-        $context->registerBackgroundJob(AltofleetOfflineCheck::class);
+        // NC33 renamed registerNotifier → registerNotifierService
+        if (method_exists($context, 'registerNotifierService')) {
+            $context->registerNotifierService(Notifier::class);
+        } else {
+            $context->registerNotifier(Notifier::class);
+        }
+
+        // NC33 removed registerBackgroundJob; fallback handled in boot() via IJobList
+        if (method_exists($context, 'registerBackgroundJob')) {
+            $context->registerBackgroundJob(AltofleetOfflineCheck::class);
+        }
+
+        // NC33 removed registerRepairStep; SeedFailureModes is a one-time seed already applied
+        if (method_exists($context, 'registerRepairStep')) {
+            $context->registerRepairStep(SeedFailureModes::class);
+        }
     }
 
     public function boot(IBootContext $context): void {
-        // When a user logs in, ensure their PMS Procedures folder exists
-        $server = $context->getServerContainer();
-        $userSession = $server->get(IUserSession::class);
-
-        $userSession->listen('\OC\User', 'postLogin', function () use ($server) {
+        // NC33+: background job registration moved out of IRegistrationContext
+        if (!method_exists(IRegistrationContext::class, 'registerBackgroundJob')) {
             try {
-                $session    = $server->get(IUserSession::class);
-                $user       = $session->getUser();
-                if (!$user) return;
+                $context->getServerContainer()->get(IJobList::class)->add(AltofleetOfflineCheck::class);
+            } catch (\Throwable $e) {}
+        }
 
-                $rootFolder = $server->get(IRootFolder::class);
-                $userFolder = $rootFolder->getUserFolder($user->getUID());
-
-                if (!$userFolder->nodeExists(self::SOP_FOLDER)) {
-                    $userFolder->newFolder(self::SOP_FOLDER);
-                }
-            } catch (\Throwable $e) {
-                // Non-fatal — folder will be created on first SOP picker access
-            }
-        });
+        $server = $context->getServerContainer();
+        try {
+            $userSession = $server->get(IUserSession::class);
+            $userSession->listen('\OC\User', 'postLogin', function () use ($server) {
+                try {
+                    $user = $server->get(IUserSession::class)->getUser();
+                    if (!$user) return;
+                    $userFolder = $server->get(IRootFolder::class)->getUserFolder($user->getUID());
+                    if (!$userFolder->nodeExists(self::SOP_FOLDER)) {
+                        $userFolder->newFolder(self::SOP_FOLDER);
+                    }
+                } catch (\Throwable $e) {}
+            });
+        } catch (\Throwable $e) {}
     }
 }

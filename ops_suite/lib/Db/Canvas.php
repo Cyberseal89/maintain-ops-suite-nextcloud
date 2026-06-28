@@ -24,6 +24,11 @@ use OCP\AppFramework\Db\Entity;
  * @method ?string getUpdatedAt()        @method void setUpdatedAt(?string $v)
  */
 class Canvas extends Entity implements \JsonSerializable {
+    public function __construct() {
+        $this->addType('isLive', 'boolean');
+        $this->addType('revisionRequired', 'boolean');
+    }
+
     protected string  $name             = '';
     protected string  $canvasType       = 'custom';
     protected ?int    $platformId       = null;

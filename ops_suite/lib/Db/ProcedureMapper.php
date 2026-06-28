@@ -131,4 +131,13 @@ class ProcedureMapper extends QBMapper {
            ->setMaxResults($limit);
         return $this->findEntities($qb);
     }
+
+    /** Find as_required PMs that are triggered by a specific meter PM. */
+    public function findByTriggerSource(int $sourceId): array {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')->from($this->getTableName())
+           ->where($qb->expr()->eq('trigger_source_id', $qb->createNamedParameter($sourceId, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_INT)))
+           ->andWhere($qb->expr()->eq('trigger_type', $qb->createNamedParameter('as_required')));
+        return $this->findEntities($qb);
+    }
 }

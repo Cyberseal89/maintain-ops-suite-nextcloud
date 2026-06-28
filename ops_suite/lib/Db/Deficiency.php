@@ -37,6 +37,7 @@ class Deficiency extends Entity implements \JsonSerializable {
     protected ?string  $failureMode                 = null;
     protected string   $budgetStatus                = 'unbudgeted';
     protected ?int     $budgetFiscalYear             = null;
+    protected ?int    $documentId              = null;  // 520 DM — fault isolation procedure
     protected ?string $localUuid              = null;
     protected string  $createdBy              = '';
     protected string  $createdAt              = '';
@@ -82,6 +83,8 @@ class Deficiency extends Entity implements \JsonSerializable {
     public function setBudgetStatus(string $v): void    { $this->budgetStatus = $v; $this->markFieldUpdated('budgetStatus'); }
     public function getBudgetFiscalYear(): ?int         { return $this->budgetFiscalYear; }
     public function setBudgetFiscalYear(?int $v): void  { $this->budgetFiscalYear = $v; $this->markFieldUpdated('budgetFiscalYear'); }
+    public function getDocumentId(): ?int               { return $this->documentId; }
+    public function setDocumentId(?int $v): void        { $this->documentId = $v; $this->markFieldUpdated('documentId'); }
     public function getLocalUuid(): ?string             { return $this->localUuid; }
     public function setLocalUuid(?string $v): void    { $this->localUuid = $v; $this->markFieldUpdated('localUuid'); }
     public function getCreatedBy(): string            { return $this->createdBy; }
@@ -129,6 +132,7 @@ class Deficiency extends Entity implements \JsonSerializable {
             'budget_status'              => $this->budgetStatus,
             'budget_fiscal_year'         => $this->budgetFiscalYear,
             'deferred_from_modernization' => $this->deferredFromModernization,
+            'document_id'             => $this->documentId,
             'local_uuid'              => $this->localUuid,
             'created_by'              => $this->createdBy,
             'created_at'              => $this->createdAt,

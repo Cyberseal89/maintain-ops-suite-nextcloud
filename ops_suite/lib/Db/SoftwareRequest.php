@@ -9,6 +9,7 @@ class SoftwareRequest extends Entity implements \JsonSerializable {
     protected $requestedBy;
     protected $status;
     protected $deficiencyId;
+    protected $customDescription;
     protected $approvedBy;
     protected $approvedAt;
     protected $installedAt;
@@ -16,7 +17,7 @@ class SoftwareRequest extends Entity implements \JsonSerializable {
     protected $createdAt;
     protected $updatedAt;
 
-    public function __construct() { parent::__construct(); }
+    public function __construct() {}
 
     public function jsonSerialize(): array {
         return [
@@ -25,8 +26,9 @@ class SoftwareRequest extends Entity implements \JsonSerializable {
             'catalog_id'    => (int)$this->catalogId,
             'requested_by'  => $this->requestedBy,
             'status'        => $this->status,
-            'deficiency_id' => $this->deficiencyId ? (int)$this->deficiencyId : null,
-            'approved_by'   => $this->approvedBy,
+            'deficiency_id'      => $this->deficiencyId ? (int)$this->deficiencyId : null,
+            'custom_description' => $this->customDescription,
+            'approved_by'        => $this->approvedBy,
             'approved_at'   => $this->approvedAt,
             'installed_at'  => $this->installedAt,
             'notes'         => $this->notes,

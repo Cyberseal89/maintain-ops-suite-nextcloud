@@ -13,6 +13,7 @@ use OCP\AppFramework\Db\Entity;
  * @method string  getTitle()          @method void setTitle(string $v)
  * @method string  getStatus()         @method void setStatus(string $v)
  * @method ?int    getDocId()          @method void setDocId(?int $v)
+ * @method ?int    getDocumentId()     @method void setDocumentId(?int $v)
  * @method string  getCreatedBy()      @method void setCreatedBy(string $v)
  * @method ?string getCreatedAt()      @method void setCreatedAt(?string $v)
  * @method ?string getUpdatedAt()      @method void setUpdatedAt(?string $v)
@@ -24,7 +25,8 @@ class FmeaWorksheet extends Entity implements \JsonSerializable {
     protected ?int    $assetId   = null;
     protected string  $title     = 'FMEA Worksheet';
     protected string  $status    = 'draft';
-    protected ?int    $docId     = null;
+    protected ?int    $docId       = null;
+    protected ?int    $documentId  = null;  // 900 DM — fault description/reference
     protected string  $createdBy = '';
     protected ?string $createdAt = null;
     protected ?string $updatedAt = null;
@@ -37,7 +39,8 @@ class FmeaWorksheet extends Entity implements \JsonSerializable {
             'asset_id'   => $this->assetId,
             'title'      => $this->title,
             'status'     => $this->status,
-            'doc_id'     => $this->docId,
+            'doc_id'      => $this->docId,
+            'document_id' => $this->documentId,
             'created_by' => $this->createdBy,
             'created_at' => $this->createdAt,
             'updated_at' => $this->updatedAt,

@@ -28,13 +28,19 @@ class SoftwareCatalogController extends Controller {
         parent::__construct($appName, $request);
     }
 
-    /** @NoAdminRequired */
+    /**
+     * @NoAdminRequired
+     * @NoCSRFRequired
+     */
     public function catalogIndex(): DataResponse {
         $items = $this->catalogMapper->findAll();
         return new DataResponse(array_map(fn($i) => $i->jsonSerialize(), $items));
     }
 
-    /** @NoAdminRequired */
+    /**
+     * @NoAdminRequired
+     * @NoCSRFRequired
+     */
     public function catalogCreate(): DataResponse {
         $now  = date('Y-m-d H:i:s');
         $data = $this->request->getParams();
@@ -49,11 +55,18 @@ class SoftwareCatalogController extends Controller {
         $item->setEnabled(true);
         $item->setCreatedAt($now);
         $item->setUpdatedAt($now);
-        $created = $this->catalogMapper->insert($item);
+        try {
+            $created = $this->catalogMapper->insert($item);
+        } catch (\Throwable $e) {
+            return new DataResponse(['error' => $e->getMessage()], Http::STATUS_INTERNAL_SERVER_ERROR);
+        }
         return new DataResponse($created->jsonSerialize(), Http::STATUS_CREATED);
     }
 
-    /** @NoAdminRequired */
+    /**
+     * @NoAdminRequired
+     * @NoCSRFRequired
+     */
     public function catalogUpdate(int $id): DataResponse {
         $item = $this->catalogMapper->findById($id);
         $data = $this->request->getParams();
@@ -70,7 +83,10 @@ class SoftwareCatalogController extends Controller {
         return new DataResponse($updated->jsonSerialize());
     }
 
-    /** @NoAdminRequired */
+    /**
+     * @NoAdminRequired
+     * @NoCSRFRequired
+     */
     public function catalogDelete(int $id): DataResponse {
         $item = $this->catalogMapper->findById($id);
         $this->catalogMapper->delete($item);
@@ -79,7 +95,10 @@ class SoftwareCatalogController extends Controller {
 
     // ── Requests ──────────────────────────────────────────────
 
-    /** @NoAdminRequired */
+    /**
+     * @NoAdminRequired
+     * @NoCSRFRequired
+     */
     public function requestIndex(): DataResponse {
         $status = $this->request->getParam('status');
         $nodeId = $this->request->getParam('node_id');
@@ -98,7 +117,7 @@ class SoftwareCatalogController extends Controller {
                 $row['catalog'] = null;
             }
             try {
-                $node = $this->nodeMapper->findById($r->getNodeId());
+                $node = $this->nodeMapper->find($r->getNodeId());
                 $row['node_hostname'] = $node->getHostname();
             } catch (\Exception) {
                 $row['node_hostname'] = '';
@@ -108,7 +127,10 @@ class SoftwareCatalogController extends Controller {
         return new DataResponse($out);
     }
 
-    /** @NoAdminRequired */
+    /**
+     * @NoAdminRequired
+     * @NoCSRFRequired
+     */
     public function requestCreate(): DataResponse {
         $now  = date('Y-m-d H:i:s');
         $uid  = $this->userSession->getUser()?->getUID() ?? '';
@@ -116,8 +138,12 @@ class SoftwareCatalogController extends Controller {
         $nodeId    = (int)($data['node_id'] ?? 0);
         $catalogId = (int)($data['catalog_id'] ?? 0);
 
-        $cat  = $this->catalogMapper->findById($catalogId);
-        $node = $this->nodeMapper->findById($nodeId);
+        try {
+            $cat  = $this->catalogMapper->findById($catalogId);
+            $node = $this->nodeMapper->find($nodeId);
+        } catch (\Exception $e) {
+            return new DataResponse(['error' => 'Node or catalog item not found'], Http::STATUS_NOT_FOUND);
+        }
 
         $req = new SoftwareRequest();
         $req->setNodeId($nodeId);
@@ -127,18 +153,18 @@ class SoftwareCatalogController extends Controller {
         $req->setApprovedBy($cat->getAutoApprove() ? 'auto' : '');
         $req->setApprovedAt($cat->getAutoApprove() ? $now : '');
         $req->setInstalledAt('');
+        $req->setCustomDescription(null);
         $req->setNotes($data['notes'] ?? '');
         $req->setCreatedAt($now);
         $req->setUpdatedAt($now);
 
-        // Auto-create a Deficiency for non-auto-approved requests
         if (!$cat->getAutoApprove()) {
             $def = new Deficiency();
             $def->setSummary('Software Request: ' . $cat->getName() . ' — ' . $node->getHostname());
             $def->setDescription(
                 'Node ' . $node->getHostname() . ' (' . $node->getIpAddress() . ') ' .
                 'has requested installation of "' . $cat->getName() . '" (' . $cat->getPackageName() . '). ' .
-                'Tier: ' . $cat->getTierLabel() . '. Requested by: ' . $uid . '. ' .
+                'Tier: ' . $cat->tierLabel() . '. Requested by: ' . $uid . '. ' .
                 'Approve or reject this request in Infrastructure → Software Catalog → Requests.'
             );
             $def->setSeverity('SEV-4');
@@ -167,7 +193,10 @@ class SoftwareCatalogController extends Controller {
         return new DataResponse($row, Http::STATUS_CREATED);
     }
 
-    /** @NoAdminRequired */
+    /**
+     * @NoAdminRequired
+     * @NoCSRFRequired
+     */
     public function requestApprove(int $id): DataResponse {
         $now = date('Y-m-d H:i:s');
         $uid = $this->userSession->getUser()?->getUID() ?? '';
@@ -176,7 +205,6 @@ class SoftwareCatalogController extends Controller {
         $req->setApprovedBy($uid);
         $req->setApprovedAt($now);
         $req->setUpdatedAt($now);
-        // Close the linked deficiency
         if ($req->getDeficiencyId()) {
             try {
                 $def = $this->deficiencyMapper->find($req->getDeficiencyId());
@@ -189,7 +217,10 @@ class SoftwareCatalogController extends Controller {
         return new DataResponse($updated->jsonSerialize());
     }
 
-    /** @NoAdminRequired */
+    /**
+     * @NoAdminRequired
+     * @NoCSRFRequired
+     */
     public function requestReject(int $id): DataResponse {
         $now   = date('Y-m-d H:i:s');
         $uid   = $this->userSession->getUser()?->getUID() ?? '';
@@ -212,7 +243,117 @@ class SoftwareCatalogController extends Controller {
         return new DataResponse($updated->jsonSerialize());
     }
 
-    /** @NoAdminRequired */
+    /**
+     * @NoAdminRequired
+     * @NoCSRFRequired
+     */
+    public function customRequestCreate(): DataResponse {
+        $now  = date('Y-m-d H:i:s');
+        $uid  = $this->userSession->getUser()?->getUID() ?? '';
+        $data = $this->request->getParams();
+        $nodeId = (int)($data['node_id'] ?? 0);
+        $desc   = trim($data['description'] ?? '');
+        if ($desc === '') {
+            return new DataResponse(['error' => 'Description required'], Http::STATUS_BAD_REQUEST);
+        }
+
+        try {
+            $node = $this->nodeMapper->find($nodeId);
+        } catch (\Exception $e) {
+            return new DataResponse(['error' => 'Node not found'], Http::STATUS_NOT_FOUND);
+        }
+
+        $req = new SoftwareRequest();
+        $req->setNodeId($nodeId);
+        $req->setCatalogId(0);
+        $req->setRequestedBy($uid);
+        $req->setStatus('pending');
+        $req->setApprovedBy('');
+        $req->setApprovedAt('');
+        $req->setInstalledAt('');
+        $req->setCustomDescription(mb_substr($desc, 0, 2000));
+        $req->setNotes($data['notes'] ?? '');
+        $req->setCreatedAt($now);
+        $req->setUpdatedAt($now);
+
+        $def = new Deficiency();
+        $def->setSummary('Software Request (unlisted): ' . $node->getHostname());
+        $def->setDescription(
+            'Node ' . $node->getHostname() . ' (' . $node->getIpAddress() . ') ' .
+            'has submitted an unlisted software request. Requested by: ' . $uid . '. ' .
+            'Description: ' . $desc
+        );
+        $def->setSeverity('SEV-4');
+        $def->setStatus('open');
+        $def->setDiscoveryMethod('software_request');
+        $def->setAssignedTo('');
+        $def->setReviewedBy('');
+        $def->setRequirementsToResolve('');
+        $def->setOutsideEntityRequired('');
+        $def->setEstPartsCost(0);
+        $def->setEstLaborCost(0);
+        $def->setManDaysInternal(0);
+        $def->setManDaysExternal(0);
+        $def->setBudgetStatus('unbudgeted');
+        $def->setAssetId(0);
+        $def->setCreatedAt($now);
+        $def->setUpdatedAt($now);
+        $created_def = $this->deficiencyMapper->insert($def);
+        $req->setDeficiencyId($created_def->getId());
+
+        $created = $this->requestMapper->insert($req);
+        $row = $created->jsonSerialize();
+        $row['node_hostname'] = $node->getHostname();
+        return new DataResponse($row, Http::STATUS_CREATED);
+    }
+
+    /**
+     * @NoAdminRequired
+     * @NoCSRFRequired
+     */
+    public function packageSearch(): DataResponse {
+        $q = trim($this->request->getParam('q', ''));
+        if (strlen($q) < 2) return new DataResponse([]);
+        if (!preg_match('/^[a-z0-9][a-z0-9+\-. ]*$/i', $q)) return new DataResponse([]);
+
+        $url = 'https://repology.org/api/v1/projects/?search=' . urlencode($q)
+             . '&inrepo=ubuntu_24_04&limit=20';
+        $ctx = stream_context_create(['http' => [
+            'timeout' => 6,
+            'header'  => "User-Agent: MaintainOpsSuite/1.0\r\n",
+        ]]);
+        try {
+            $body = @file_get_contents($url, false, $ctx);
+        } catch (\Exception $e) {
+            return new DataResponse([]);
+        }
+        if ($body === false) return new DataResponse([]);
+        $data = json_decode($body, true);
+        if (!is_array($data)) return new DataResponse([]);
+
+        $results = [];
+        foreach ($data as $project => $packages) {
+            $ubuntuPkg = null;
+            $summary   = '';
+            foreach ($packages as $pkg) {
+                if (str_contains($pkg['repo'] ?? '', 'ubuntu')) {
+                    $ubuntuPkg = $pkg['binname'] ?? $pkg['srcname'] ?? $project;
+                    $summary   = $pkg['summary'] ?? '';
+                    break;
+                }
+            }
+            if ($ubuntuPkg) {
+                $results[] = ['name' => $ubuntuPkg, 'project' => $project, 'summary' => mb_substr($summary, 0, 80)];
+            }
+        }
+        usort($results, fn($a,$b) => strcmp($a['name'], $b['name']));
+        return new DataResponse(array_slice($results, 0, 12));
+    }
+
+    /**
+     * @NoAdminRequired
+     * @NoCSRFRequired
+     */
     public function repologyCheck(): DataResponse {
         $pkg = trim($this->request->getParam('pkg', ''));
         if ($pkg === '' || !preg_match('/^[a-z0-9][a-z0-9+\-.]+$/i', $pkg)) {
@@ -223,7 +364,11 @@ class SoftwareCatalogController extends Controller {
             'timeout' => 6,
             'header'  => "User-Agent: MaintainOpsSuite/1.0\r\n",
         ]]);
-        $body = @file_get_contents($url, false, $ctx);
+        try {
+            $body = @file_get_contents($url, false, $ctx);
+        } catch (\Exception $e) {
+            return new DataResponse(['found' => false, 'error' => 'unreachable']);
+        }
         if ($body === false) {
             return new DataResponse(['found' => false, 'error' => 'unreachable']);
         }
@@ -240,7 +385,10 @@ class SoftwareCatalogController extends Controller {
         return new DataResponse(['found' => $found]);
     }
 
-    /** @NoAdminRequired */
+    /**
+     * @NoAdminRequired
+     * @NoCSRFRequired
+     */
     public function requestConfirm(int $id): DataResponse {
         $now    = date('Y-m-d H:i:s');
         $data   = $this->request->getParams();

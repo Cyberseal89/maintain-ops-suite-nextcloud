@@ -91,6 +91,7 @@ class DeficiencyController extends Controller {
         $def->setScheduledOutageHours((float)($data['scheduled_outage_hours'] ?? 0));
         $def->setTargetCompletion($data['target_completion'] ?: null);
         $def->setLinkedProcedureId((int)($data['linked_procedure_id'] ?? 0));
+        $def->setDocumentId(isset($data['document_id']) && $data['document_id'] ? (int)$data['document_id'] : null);
         $def->setPlatformId(isset($data['platform_id']) && $data['platform_id'] ? (int)$data['platform_id'] : null);
         $def->setFailureModeId(isset($data['failure_mode_id']) && $data['failure_mode_id'] ? (int)$data['failure_mode_id'] : null);
         $def->setCreatedBy($uid);
@@ -149,6 +150,7 @@ class DeficiencyController extends Controller {
         if (array_key_exists('budget_status', $data))     $def->setBudgetStatus($data['budget_status'] ?: 'unbudgeted');
         if (array_key_exists('budget_fiscal_year', $data))$def->setBudgetFiscalYear($data['budget_fiscal_year'] ? (int)$data['budget_fiscal_year'] : null);
         if (array_key_exists('failure_mode', $data))       $def->setFailureMode($data['failure_mode'] ?: null);
+        if (array_key_exists('document_id', $data))        $def->setDocumentId($data['document_id'] ? (int)$data['document_id'] : null);
         if (isset($data['status']) && $data['status'] === 'closed' && $oldStatus !== 'closed') {
             $def->setClosedBy($uid ?: 'field');
             $def->setClosedAt(date('Y-m-d H:i:s'));

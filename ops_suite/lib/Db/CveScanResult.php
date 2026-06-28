@@ -21,6 +21,10 @@ use OCP\AppFramework\Db\Entity;
  * @method string getCreatedAt()          @method void setCreatedAt(string $v)
  */
 class CveScanResult extends Entity implements \JsonSerializable {
+    public function __construct() {
+        $this->addType('resolved', 'boolean');
+    }
+
     protected int    $nodeId           = 0;
     protected string $cveId            = '';
     protected string $severity         = 'UNKNOWN';
@@ -43,6 +47,7 @@ class CveScanResult extends Entity implements \JsonSerializable {
             'package_name'      => $this->packageName,
             'installed_version' => $this->installedVersion,
             'fixed_version'     => $this->fixedVersion,
+            'is_remedial'       => ($this->fixedVersion !== '' && $this->fixedVersion !== null),
             'description'       => $this->description,
             'cvss_score'        => $this->cvssScore,
             'scanned_at'        => $this->scannedAt,

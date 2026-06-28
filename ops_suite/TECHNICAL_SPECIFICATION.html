@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maintain Ops Suite — Technical Specification</title>
+<style>
+  :root {
+    --bg:       #0f1623;
+    --bg2:      #161e2e;
+    --bg3:      #1e2a40;
+    --border:   #2e3a55;
+    --text:     #e2e8f0;
+    --muted:    #94a3b8;
+    --blue:     #38bdf8;
+    --purple:   #a78bfa;
+    --green:    #4ade80;
+    --yellow:   #fbbf24;
+    --red:      #f87171;
+    --mono:     'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Layout */
+  .wrapper { display: flex; min-height: 100vh; }
+  nav {
+    width: 260px; min-width: 260px;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    padding: 32px 0;
+    position: sticky; top: 0; height: 100vh;
+    overflow-y: auto;
+  }
+  nav .logo {
+    padding: 0 20px 24px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  nav .logo h1 { font-size: 15px; color: var(--text); font-weight: 800; }
+  nav .logo p  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  nav .doc-tag {
+    display: inline-block;
+    background: #1a2744;
+    border: 1px solid var(--purple);
+    color: var(--purple);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .6px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-top: 8px;
+  }
+  nav ul { list-style: none; }
+  nav li a {
+    display: block;
+    padding: 7px 20px;
+    color: var(--muted);
+    font-size: 12px;
+    border-left: 2px solid transparent;
+    transition: all .15s;
+  }
+  nav li a:hover, nav li a.active {
+    color: var(--text);
+    border-left-color: var(--blue);
+    background: rgba(56,189,248,.07);
+    text-decoration: none;
+  }
+  nav .nav-section {
+    padding: 18px 20px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: #4a5568;
+  }
+
+  main { flex: 1; padding: 48px 64px; max-width: 960px; }
+
+  /* Cover */
+  .cover {
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    border-radius: 12px;
+    padding: 40px 48px;
+    margin-bottom: 48px;
+  }
+  .cover .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 1.2px;
+    text-transform: uppercase; color: var(--purple); margin-bottom: 12px;
+  }
+  .cover h1 { font-size: 28px; font-weight: 900; color: var(--text); line-height: 1.2; }
+  .cover .subtitle { color: var(--muted); margin-top: 8px; font-size: 15px; }
+  .cover .meta {
+    display: flex; gap: 32px; margin-top: 24px;
+    padding-top: 20px; border-top: 1px solid var(--border);
+  }
+  .cover .meta-item { font-size: 12px; }
+  .cover .meta-item .label { color: var(--muted); text-transform: uppercase; letter-spacing: .6px; font-size: 10px; }
+  .cover .meta-item .value { color: var(--text); font-weight: 700; margin-top: 2px; }
+
+  /* Sections */
+  .section { margin-bottom: 56px; scroll-margin-top: 32px; }
+  .section h2 {
+    font-size: 20px; font-weight: 800; color: var(--text);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .section h3 {
+    font-size: 13px; font-weight: 700; color: var(--blue);
+    text-transform: uppercase; letter-spacing: .7px;
+    margin: 24px 0 10px;
+  }
+  p { color: var(--muted); margin-bottom: 12px; }
+  strong { color: var(--text); }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 13px; }
+  th {
+    background: var(--bg3);
+    color: var(--muted);
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .7px;
+    padding: 8px 12px; text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--border); color: var(--muted); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td strong, td code { color: var(--text); }
+  tbody tr:hover td { background: rgba(255,255,255,.02); }
+
+  /* Code */
+  code {
+    font-family: var(--mono);
+    background: #1a2240;
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #a5f3fc;
+  }
+  pre {
+    font-family: var(--mono);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-size: 12px;
+    color: #a5f3fc;
+    overflow-x: auto;
+    margin: 12px 0 20px;
+    line-height: 1.8;
+  }
+
+  /* Callouts */
+  .note {
+    background: #1a2744;
+    border-left: 3px solid var(--blue);
+    border-radius: 0 6px 6px 0;
+    padding: 12px 16px;
+    margin: 12px 0 20px;
+    color: #cbd5e1;
+    font-size: 13px;
+  }
+  .warn {
+    background: #2a1f0e;
+    border-left: 3px solid var(--yellow);
+    border-radius: 0 6px 6px 0;
+    padding: 12px 16px;
+    margin: 12px 0 20px;
+    color: #fde68a;
+    font-size: 13px;
+  }
+
+  /* Badges */
+  .badge {
+    display: inline-block;
+    font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 4px;
+    text-transform: uppercase; letter-spacing: .5px;
+    vertical-align: middle;
+  }
+  .badge-blue   { background: #1e3a5f; color: #38bdf8; }
+  .badge-purple { background: #2d1f52; color: #a78bfa; }
+  .badge-green  { background: #14402a; color: #4ade80; }
+  .badge-yellow { background: #3b2a0a; color: #fbbf24; }
+  .badge-red    { background: #3b1111; color: #f87171; }
+  .badge-gray   { background: #1e2a40; color: #94a3b8; }
+
+  /* Chain diagram */
+  .chain {
+    display: flex; align-items: center; gap: 0;
+    flex-wrap: wrap; margin: 16px 0 24px;
+    font-size: 12px;
+  }
+  .chain-node {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    text-align: center;
+    min-width: 140px;
+  }
+  .chain-node .cn-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .6px; }
+  .chain-node .cn-title { color: var(--text); font-weight: 700; margin-top: 2px; }
+  .chain-node .cn-sub   { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .chain-arrow { color: var(--border); font-size: 18px; padding: 0 4px; }
+
+  @media print {
+    nav { display: none; }
+    main { padding: 24px; max-width: none; }
+    .cover { break-inside: avoid; }
+    .section { break-inside: avoid; page-break-before: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+<nav>
+  <div class="logo">
+    <h1>Maintain Ops Suite</h1>
+    <p>Alto Technologies LLC</p>
+    <span class="doc-tag">TECHNICAL SPECIFICATION</span>
+  </div>
+  <ul>
+    <li class="nav-section">Overview</li>
+    <li><a href="#s-overview">1. System Architecture</a></li>
+    <li><a href="#s-stack">2. Technology Stack</a></li>
+    <li><a href="#s-modules">3. Core Modules</a></li>
+
+    <li class="nav-section">Data Architecture</li>
+    <li><a href="#s-asset-codes">4. Asset Code Structure</a></li>
+    <li><a href="#s-dmc">5. S1000D DMC Convention</a></li>
+    <li><a href="#s-data-model">6. Data Model Reference</a></li>
+
+    <li class="nav-section">Access & Logic</li>
+    <li><a href="#s-access">7. Access Control Model</a></li>
+    <li><a href="#s-pm-logic">8. PM Scheduling Logic</a></li>
+    <li><a href="#s-def-matrix">9. Deficiency Severity Matrix</a></li>
+
+    <li class="nav-section">Integration</li>
+    <li><a href="#s-fmea-chain">10. FMEA Analytical Chain</a></li>
+    <li><a href="#s-supply">11. Supply & Inventory Rules</a></li>
+    <li><a href="#s-api">12. API Conventions</a></li>
+  </ul>
+</nav>
+
+<main>
+
+  <!-- Cover -->
+  <div class="cover">
+    <div class="eyebrow">MOS-SM-001 · Rev A · UNCONTROLLED WHEN PRINTED</div>
+    <h1>Maintain Ops Suite<br>Technical Specification</h1>
+    <p class="subtitle">Platform architecture, data model, module logic, and integration reference for system administrators, integrators, and technical staff.</p>
+    <div class="meta">
+      <div class="meta-item">
+        <div class="label">Document Number</div>
+        <div class="value">MOS-SM-001</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Revision</div>
+        <div class="value">A</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Platform Version</div>
+        <div class="value">3.29.x</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Prepared By</div>
+        <div class="value">Alto Technologies LLC</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Classification</div>
+        <div class="value">UNCLASSIFIED // FOR OFFICIAL USE</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 1. System Architecture ══════════════════════════════════════════ -->
+  <div class="section" id="s-overview">
+    <h2>1. System Architecture</h2>
+    <p>Maintain Ops Suite (MOS) is an integrated operations management platform built on the <strong>Nextcloud AppFramework</strong>. It provides a unified interface for configuration management, preventive maintenance, deficiency tracking, modernization projects, supply chain control, LOTO/safety management, S1000D technical documentation, and system architecture analysis (FMEA).</p>
+
+    <h3>Application Model</h3>
+    <p>MOS is a server-side <strong>PHP 8.2</strong> application using the Nextcloud AppFramework (QBMapper ORM, Controller/Service pattern). The frontend is a single-page application (SPA) delivered as a single compiled JavaScript bundle (~15,000+ lines). All state changes are persisted to the host database via the Nextcloud QueryBuilder — MOS does not maintain any in-memory state between requests.</p>
+
+    <div class="note">App ID: <code>ops_suite</code>. All database tables are prefixed with <code>ops_</code>. Nextcloud's <code>oc_</code> table prefix applies at the database level — actual table names are <code>oc_ops_assets</code>, <code>oc_ops_procedures</code>, etc.</div>
+
+    <h3>Request Flow</h3>
+    <pre>Browser → Nextcloud CSRF Gate → AppFramework Router
+    → Controller (permission check) → Service / Mapper
+    → IQueryBuilder → Database → DataResponse (JSON)</pre>
+
+    <h3>Database Compatibility</h3>
+    <table>
+      <thead><tr><th>Engine</th><th>Minimum Version</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><strong>MySQL / MariaDB</strong></td><td>8.0 / 10.5</td><td>Recommended for production deployments.</td></tr>
+        <tr><td><strong>PostgreSQL</strong></td><td>14</td><td>Fully supported via Nextcloud's QueryBuilder abstraction.</td></tr>
+        <tr><td><strong>SQLite</strong></td><td>3.35+</td><td>Development/testing only. Not recommended for production.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ 2. Technology Stack ═════════════════════════════════════════════ -->
+  <div class="section" id="s-stack">
+    <h2>2. Technology Stack</h2>
+    <table>
+      <thead><tr><th>Layer</th><th>Technology</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Server Runtime</strong></td><td>PHP 8.2</td><td>Nextcloud AppFramework. Strict types enforced throughout.</td></tr>
+        <tr><td><strong>Database ORM</strong></td><td>Nextcloud QBMapper / IQueryBuilder</td><td>No raw SQL. All queries via QueryBuilder for DB portability.</td></tr>
+        <tr><td><strong>Frontend</strong></td><td>Vanilla JavaScript ES6</td><td>Single compiled bundle. No framework dependency. DOM helpers only.</td></tr>
+        <tr><td><strong>Authentication</strong></td><td>Nextcloud Session</td><td>CSRF token required on all state-changing API calls (<code>POST</code>, <code>PUT</code>, <code>DELETE</code>).</td></tr>
+        <tr><td><strong>File Storage</strong></td><td>Nextcloud Files (ISimpleFS)</td><td>Used for document uploads, 3D model files, and import file staging.</td></tr>
+        <tr><td><strong>Nextcloud Compatibility</strong></td><td>NC 27 – 33</td><td>Tested on NC 27, 28, 29, 30.</td></tr>
+        <tr><td><strong>Mobile Companion</strong></td><td>Android (Google Play)</td><td>Field access for PM completion, deficiency logging, and supply status. Separate subscription.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ 3. Core Modules ═════════════════════════════════════════════════ -->
+  <div class="section" id="s-modules">
+    <h2>3. Core Modules</h2>
+    <table>
+      <thead><tr><th>Module</th><th>Description</th><th>Key Tables</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Configuration Registry</strong></td>
+          <td>Asset digital twin database. Hardware, software, firmware, infrastructure, vehicle, facility. Tracks manufacturer, model, serial number, version, location, IP, warranty, installation date. Supports IUID/UII (MIL-STD-130) and 18-month verification cycles.</td>
+          <td><code>ops_assets</code>, <code>ops_asset_photos</code>, <code>ops_asset_relations</code></td>
+        </tr>
+        <tr>
+          <td><strong>Preventive Maintenance</strong></td>
+          <td>PM procedure scheduling linked to assets. Tracks periodicity, last completed, next due, assigned technician, SOP document, and S1000D DM linkage. Auto-calculates next-due; flags overdue items. Supports auto-deficiency creation on PM failure.</td>
+          <td><code>ops_procedures</code>, <code>ops_procedure_completions</code></td>
+        </tr>
+        <tr>
+          <td><strong>Deficiency Tracking</strong></td>
+          <td>Formal deficiency lifecycle management. SEV-1 through SEV-5 severity. Full closeout workflow requiring root cause, corrective action, and actual costs. Links to PM, LOTO, Supply, Modernization, FMEA, and 520-series DM.</td>
+          <td><code>ops_deficiencies</code>, <code>ops_deficiency_history</code></td>
+        </tr>
+        <tr>
+          <td><strong>Modernizations</strong></td>
+          <td>Five-stage upgrade project lifecycle (Design → Planning → Approval → Execution → Complete). TDP management, linked deficiencies and supply requests, approval timestamping.</td>
+          <td><code>ops_modernizations</code>, <code>ops_tdp_docs</code></td>
+        </tr>
+        <tr>
+          <td><strong>Supply & Warehouse</strong></td>
+          <td>NSN/CAGE requisition workflow, SRFQ numbering, inventory management with A/B/C cycle counting, stock transactions, vendor RFQ generation.</td>
+          <td><code>ops_supply_requests</code>, <code>ops_supply_items</code>, <code>ops_inventory</code>, <code>ops_stock_transactions</code></td>
+        </tr>
+        <tr>
+          <td><strong>LOTO / Safety</strong></td>
+          <td>Lockout/Tagout session management with step verification, energy source tracking, device inventory, label/form printing, and audit reporting. LOTO-YYYY-NNNN numbering per calendar year.</td>
+          <td><code>ops_loto_sessions</code>, <code>ops_loto_devices</code></td>
+        </tr>
+        <tr>
+          <td><strong>S1000D Library</strong></td>
+          <td>Full S1000D Issue 6 authoring — Data Modules (040/200/300/520/720/730/900), Publication assembly, IETM viewer with print/PDF. DM step editor with typed step content. Reverse linkage to PM, Deficiency, and FMEA.</td>
+          <td><code>ops_documents</code>, <code>ops_dm_steps</code>, <code>ops_publication_dms</code>, <code>ops_document_revisions</code></td>
+        </tr>
+        <tr>
+          <td><strong>System Canvas / FMEA</strong></td>
+          <td>Block diagram system modeling with live asset status overlays. FMEA worksheets per canvas node: failure mode, effects, S/P/D/RPN analysis, RCM decision tracking. Links to 900-series DM for fault description sync.</td>
+          <td><code>ops_canvases</code>, <code>ops_canvas_nodes</code>, <code>ops_canvas_edges</code>, <code>ops_fmea_worksheets</code>, <code>ops_fmea_entries</code></td>
+        </tr>
+        <tr>
+          <td><strong>Availability & Gantt</strong></td>
+          <td>Project scheduling within defined availability windows. Dependency tracking, milestone events, out-of-window warnings.</td>
+          <td><code>ops_availability_projects</code>, <code>ops_gantt_items</code></td>
+        </tr>
+        <tr>
+          <td><strong>Work Packages</strong></td>
+          <td>Bundles PMs and Modernizations for external quoting. Auto-generates RFQ exports with line items, estimates, terms, and signature blocks. Enforces one-to-one item assignment.</td>
+          <td><code>ops_work_packages</code>, <code>ops_work_package_items</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ 4. Asset Code Structure ════════════════════════════════════════ -->
+  <div class="section" id="s-asset-codes">
+    <h2>4. Asset Code Structure &amp; Field Definitions</h2>
+    <p>The <code>asset_code</code> field provides a human-readable, structured identifier for each configuration item. It is separate from the system-assigned <code>id</code> (auto-increment) and <code>asset_id_label</code> (formatted <code>ASSET-NNNN</code>).</p>
+
+    <h3>Recommended Format</h3>
+    <pre>{SITE}-{TYPE}-{SEQ}
+
+Example: PLT1-GEN-001</pre>
+
+    <table>
+      <thead><tr><th>Field</th><th>Length</th><th>Description</th><th>Examples</th></tr></thead>
+      <tbody>
+        <tr><td><strong>SITE</strong></td><td>2–4 chars</td><td>Site or platform identifier</td><td><code>PLT1</code>, <code>SITE</code>, <code>BLDG</code></td></tr>
+        <tr><td><strong>TYPE</strong></td><td>2–6 chars</td><td>Equipment type abbreviation</td><td><code>GEN</code>, <code>UPS</code>, <code>RTR</code>, <code>SW</code>, <code>HVAC</code>, <code>PMP</code>, <code>SRV</code></td></tr>
+        <tr><td><strong>SEQ</strong></td><td>3 digits</td><td>Zero-padded sequence within type at site</td><td><code>001</code>, <code>002</code>, <code>012</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Key Asset Fields</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>BIGINT</td><td>System-assigned numeric PK. Never changes.</td></tr>
+        <tr><td><code>asset_id_label</code></td><td>VARCHAR</td><td>Display label <code>ASSET-{NNNN}</code>. Auto-generated. Used in DMC construction.</td></tr>
+        <tr><td><code>asset_code</code></td><td>VARCHAR</td><td>User-defined structured code. Basis for DMC generation.</td></tr>
+        <tr><td><code>name</code></td><td>VARCHAR</td><td>Human-readable equipment name.</td></tr>
+        <tr><td><code>asset_type</code></td><td>ENUM</td><td><code>hardware</code> | <code>software</code> | <code>firmware</code> | <code>infrastructure</code> | <code>vehicle</code> | <code>facility</code></td></tr>
+        <tr><td><code>status</code></td><td>ENUM</td><td><code>operational</code> | <code>degraded</code> | <code>offline</code> | <code>decommissioned</code> | <code>spare</code></td></tr>
+        <tr><td><code>serial_number</code></td><td>VARCHAR</td><td>Manufacturer serial number — primary IUID/UII reference.</td></tr>
+        <tr><td><code>criticality_code</code></td><td>CHAR(2)</td><td><code>CR</code> Critical | <code>DE</code> Degraded | <code>RD</code> Redundant | <code>SP</code> Spare | <code>AD</code> Administrative</td></tr>
+        <tr><td><code>last_verified_at</code></td><td>DATE</td><td>Date of last physical verification. Flagged overdue at 18 months.</td></tr>
+        <tr><td><code>tdp_source_asset_id</code></td><td>BIGINT</td><td>References another asset's TDP folder. Use for identical equipment sharing documentation.</td></tr>
+        <tr><td><code>platform_id</code></td><td>BIGINT</td><td>Platform scoping. Null = visible to all platforms (admins only).</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note">For DoD compliance: the <code>serial_number</code> + <code>manufacturer</code> + <code>model</code> triplet forms the basis for Unique Item Identifier (UII) construction per MIL-STD-130. The <code>iuid_compliant</code> flag tracks whether the physical item has been marked with a compliant 2D data matrix label.</div>
+  </div>
+
+  <!-- ═══ 5. S1000D DMC Convention ════════════════════════════════════════ -->
+  <div class="section" id="s-dmc">
+    <h2>5. S1000D DMC Numbering Convention</h2>
+    <p>MOS generates Data Module Codes (DMCs) following the S1000D Issue 6 naming structure adapted for the platform. The DMC uniquely identifies every Data Module and is stored in the <code>dmc</code> field of <code>ops_documents</code>.</p>
+
+    <h3>DMC Structure</h3>
+    <pre>DMC - {ModelIdentCode} - {SystemDiffCode} - {AssetSNS} - {SubsystemCode} - {InfoCode}{Variant} - {ItemLocationCode}
+DMC -       ALTO       -        A          - PLT1GEN001 -       00         -       200A          -        A</pre>
+
+    <table>
+      <thead><tr><th>Segment</th><th>Value</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><strong>ModelIdentCode</strong></td><td><code>ALTO</code></td><td>Alto Technologies LLC model identification code.</td></tr>
+        <tr><td><strong>SystemDiffCode</strong></td><td><code>A</code></td><td>Standard system differentiator — single-system implementation.</td></tr>
+        <tr><td><strong>AssetSNS</strong></td><td>Derived</td><td>Asset's <code>asset_code</code> field, uppercased, non-alphanumeric characters stripped. <code>PLT1-GEN-001</code> → <code>PLT1GEN001</code>.</td></tr>
+        <tr><td><strong>SubsystemCode</strong></td><td><code>00</code></td><td>Not subdivided at subsystem level in current implementation.</td></tr>
+        <tr><td><strong>InfoCode</strong></td><td>3 digits</td><td>S1000D info code (see table below).</td></tr>
+        <tr><td><strong>InfoCodeVariant</strong></td><td><code>A</code>–<code>Z</code></td><td>Differentiates multiple DMs of same type for same asset. Auto-assigned on creation.</td></tr>
+        <tr><td><strong>ItemLocationCode</strong></td><td><code>A</code></td><td>Standard item location code.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Info Code Definitions</h3>
+    <table>
+      <thead><tr><th>Code</th><th>Type</th><th>Purpose</th><th>Links To</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-blue">040</span></td>
+          <td>Description &amp; Operation</td>
+          <td>System/component description, technical characteristics, theory of operation.</td>
+          <td>Asset detail page</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-green">200</span></td>
+          <td>Maintenance Procedure</td>
+          <td>Scheduled and unscheduled maintenance procedures.</td>
+          <td><code>ops_procedures.document_id</code></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-purple">300</span></td>
+          <td>Illustrated Parts Data</td>
+          <td>Parts list with NSN, part numbers, quantities, and units.</td>
+          <td>Asset parts card</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-yellow">520</span></td>
+          <td>Troubleshooting</td>
+          <td>Fault isolation procedures — sequential diagnostic steps.</td>
+          <td><code>ops_deficiencies.document_id</code></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-green">720</span></td>
+          <td>Removal Procedure</td>
+          <td>Step-by-step component removal.</td>
+          <td><code>ops_procedures.document_id</code></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-green">730</span></td>
+          <td>Installation Procedure</td>
+          <td>Step-by-step component installation.</td>
+          <td><code>ops_procedures.document_id</code></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-red">900</span></td>
+          <td>Fault Description</td>
+          <td>Known fault reference data: codes, symptoms, effects, probable causes.</td>
+          <td><code>ops_fmea_worksheets.document_id</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Issue Numbering</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>issue_number</code></td><td>Starts at 1. Advances by 1 each time a DM is formally revised and released.</td></tr>
+        <tr><td><code>in_work_number</code></td><td>0 = Released. &gt;0 = In-Work draft. Resets to 0 on release.</td></tr>
+        <tr><td><code>dmc_review_flag</code></td><td>Set true when issue_number advances. Cleared when the linked PM acknowledges the change.</td></tr>
+        <tr><td><code>re_issue_required</code></td><td>Set true on all containing Publications when a DM issue advances.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ 6. Data Model Reference ══════════════════════════════════════════ -->
+  <div class="section" id="s-data-model">
+    <h2>6. Data Model Reference — Key Tables</h2>
+    <table>
+      <thead><tr><th>#</th><th>Table</th><th>Description</th><th>Key Fields</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><code>ops_assets</code></td><td>Configuration registry</td><td>asset_code, asset_type, status, criticality_code, last_verified_at, tdp_source_asset_id, platform_id</td></tr>
+        <tr><td>2</td><td><code>ops_procedures</code></td><td>PM procedure definitions</td><td>document_id → 200/720/730 DM. periodicity, next_due, last_completed, dmc_review_flag</td></tr>
+        <tr><td>3</td><td><code>ops_deficiencies</code></td><td>Deficiency lifecycle</td><td>document_id → 520 DM. severity, status, linked_procedure_id, failure_mode_id, root_cause, corrective_action, closed_by, closed_at</td></tr>
+        <tr><td>4</td><td><code>ops_documents</code></td><td>Unified document & DM library</td><td>doc_type: external|data_module|publication. info_code, dmc, issue_number, in_work_number, pub_code, pub_type, re_issue_required</td></tr>
+        <tr><td>5</td><td><code>ops_dm_steps</code></td><td>S1000D DM content steps</td><td>step_type: title|action|warning|caution|note|tech_char|expected_result|substep|symptom|probable_cause|corrective_action|part_item. step_order, content</td></tr>
+        <tr><td>6</td><td><code>ops_publication_dms</code></td><td>Publication → DM junction</td><td>publication_id, document_id, chapter, section, sequence, chapter_title</td></tr>
+        <tr><td>7</td><td><code>ops_fmea_worksheets</code></td><td>FMEA worksheets per canvas node</td><td>document_id → 900 DM. canvas_id, node_id, asset_id, doc_id (published report), status</td></tr>
+        <tr><td>8</td><td><code>ops_fmea_entries</code></td><td>FMEA failure mode rows</td><td>failure_mode, function, local_effect, system_effect, severity, occurrence, detectability, rpn, detection_method, recommended_action</td></tr>
+        <tr><td>9</td><td><code>ops_canvases</code></td><td>System architecture diagrams</td><td>drawing_doc_id → external document. is_live, platform_id</td></tr>
+        <tr><td>10</td><td><code>ops_supply_requests</code></td><td>Supply requisitions</td><td>srfq_number, status: requested|approved|ordered|received|cancelled. revalidation_required</td></tr>
+        <tr><td>11</td><td><code>ops_inventory</code></td><td>Warehouse inventory items</td><td>cycle_class: A|B|C. reorder_point, qty_on_hand</td></tr>
+        <tr><td>12</td><td><code>ops_loto_sessions</code></td><td>LOTO/Tagout sessions</td><td>session_type: lockout|pm|deficiency. steps_completed (JSON), energy_sources (JSON), tag_number, lock_number, status</td></tr>
+        <tr><td>13</td><td><code>ops_modernizations</code></td><td>Asset upgrade projects</td><td>stage: design|planning|approval|execution|complete. approved_at, tdp docs</td></tr>
+        <tr><td>14</td><td><code>ops_platforms</code></td><td>Organizational units</td><td>name, group_id (Nextcloud group), shop codes linked separately</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ 7. Access Control ════════════════════════════════════════════════ -->
+  <div class="section" id="s-access">
+    <h2>7. Platform, Group &amp; Role Access Model</h2>
+    <p>MOS uses Nextcloud's group-based access control. Each role is mapped to a Nextcloud group in Settings. The system resolves the user's effective role at API call time via <code>PermissionService</code>.</p>
+
+    <h3>Role Hierarchy</h3>
+    <table>
+      <thead><tr><th>Role</th><th>Scope</th><th>Capabilities</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Administrator</strong></td><td>Global</td><td>Full system access — all CRUD, settings, CCB approval, seeding, platform management.</td></tr>
+        <tr><td><strong>Multi-Site Manager</strong></td><td>Cross-site</td><td>Admin capabilities without Nextcloud admin access.</td></tr>
+        <tr><td><strong>Platform Manager</strong></td><td>Platform</td><td>Manages a site, approves CCB stage transitions.</td></tr>
+        <tr><td><strong>Shop Supervisor</strong></td><td>Shop</td><td>Full write within assigned shops.</td></tr>
+        <tr><td><strong>Lead Technician</strong></td><td>Shop</td><td>Senior tech — full write, shop-scoped.</td></tr>
+        <tr><td><strong>Technician</strong></td><td>Shop</td><td>Standard write — create/close work, log deficiencies.</td></tr>
+        <tr><td><strong>Quality Inspector</strong></td><td>Shop</td><td>Write for inspections and deficiency closeout.</td></tr>
+        <tr><td><strong>Safety Officer</strong></td><td>Platform</td><td>Write for LOTO and safety records.</td></tr>
+        <tr><td><strong>Logistics Coordinator</strong></td><td>Platform</td><td>Write for supply requests and inventory.</td></tr>
+        <tr><td><strong>Maintenance Planner</strong></td><td>Platform</td><td>Write for PM scheduling and work packages.</td></tr>
+        <tr><td><strong>Contractor</strong></td><td>Shop</td><td>Limited write — log deficiencies and PM closeout only.</td></tr>
+        <tr><td><strong>Read Only</strong></td><td>Platform</td><td>View only — no create, edit, or delete.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>S1000D Library Access</h3>
+    <p>The Library uses a two-level gate. <code>canWrite()</code> (cached per session) returns true for any role with general write access. Technicians and Read Only users land on the IETM viewer by default. The Builder tab (DM authoring and publication assembly) is only visible when <code>canWrite()</code> returns true.</p>
+
+    <div class="note">Nextcloud administrators always receive Administrator access regardless of group configuration.</div>
+  </div>
+
+  <!-- ═══ 8. PM Scheduling Logic ══════════════════════════════════════════ -->
+  <div class="section" id="s-pm-logic">
+    <h2>8. PM Scheduling Logic &amp; Due Date Calculation</h2>
+    <p>The PM module calculates <code>next_due</code> automatically from <code>last_completed</code> and <code>periodicity</code>. Overdue status is derived by comparing <code>next_due</code> to the current date at query time.</p>
+
+    <h3>Periodicity → next_due Calculation</h3>
+    <table>
+      <thead><tr><th>Periodicity</th><th>Formula</th></tr></thead>
+      <tbody>
+        <tr><td><code>daily</code></td><td><code>last_completed + 1 day</code></td></tr>
+        <tr><td><code>weekly</code></td><td><code>last_completed + 7 days</code></td></tr>
+        <tr><td><code>monthly</code></td><td><code>last_completed + 1 calendar month</code></td></tr>
+        <tr><td><code>quarterly</code></td><td><code>last_completed + 3 calendar months</code></td></tr>
+        <tr><td><code>semi_annual</code></td><td><code>last_completed + 6 calendar months</code></td></tr>
+        <tr><td><code>annual</code></td><td><code>last_completed + 12 calendar months</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Additional Logic</h3>
+    <p><strong>Overdue:</strong> <code>next_due &lt; TODAY()</code>. Dashboard Readiness tile counts overdue PMs. SEV-1/SEV-2 open deficiencies elevate urgency display.</p>
+    <p><strong>Auto-Deficiency on Fail:</strong> If <code>create_deficiency_on_fail = 1</code> on a PM, the system automatically opens a linked deficiency when the PM closeout result is set to Fail. The deficiency inherits <code>asset_id</code> and is assigned to the same technician.</p>
+    <p><strong>DM Review Flag:</strong> When a linked 200/720/730 DM advances its issue number, <code>dmc_review_flag</code> is set on the PM. A banner prompts the technician to review the updated procedure before completing the next PM. The flag clears on next PM completion.</p>
+  </div>
+
+  <!-- ═══ 9. Deficiency Severity Matrix ════════════════════════════════════ -->
+  <div class="section" id="s-def-matrix">
+    <h2>9. Deficiency Severity Matrix &amp; Status Workflow</h2>
+
+    <h3>Severity Definitions</h3>
+    <table>
+      <thead><tr><th>Code</th><th>Name</th><th>Definition</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-red">SEV-1</span></td><td>Mission Critical</td><td>Asset non-operational. Immediate corrective action required. All resources prioritized.</td></tr>
+        <tr><td><span class="badge badge-red">SEV-2</span></td><td>Major Degradation</td><td>Asset operating in degraded mode. Significant mission risk. Expedited resolution required.</td></tr>
+        <tr><td><span class="badge badge-yellow">SEV-3</span></td><td>Moderate</td><td>Asset operational. Deficiency requires scheduled corrective action within the next maintenance window.</td></tr>
+        <tr><td><span class="badge badge-blue">SEV-4</span></td><td>Minor</td><td>Cosmetic or low-impact issue. Plan correction opportunistically.</td></tr>
+        <tr><td><span class="badge badge-gray">SEV-5</span></td><td>Observation</td><td>Document only. No immediate action required. Monitor for recurrence.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Status Workflow</h3>
+    <table>
+      <thead><tr><th>Status</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>open</code></td><td>Initial state when deficiency is logged.</td></tr>
+        <tr><td><code>in_work</code></td><td>Actively being investigated or corrected.</td></tr>
+        <tr><td><code>waiting_parts</code></td><td>Corrective action identified; awaiting parts from supply.</td></tr>
+        <tr><td><code>waiting_approval</code></td><td>Corrective action pending CCB or management authorization.</td></tr>
+        <tr><td><code>closed</code></td><td>Deficiency resolved. All closeout fields required.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Closeout Requirements</h3>
+    <p>Closing a deficiency requires all of the following fields to be populated: <code>root_cause</code>, <code>corrective_action</code>, <code>actual_parts_cost</code>, <code>actual_labor_cost</code>, <code>actual_man_days</code>, and <code>reviewed_by</code>. The system records <code>closed_by</code> and <code>closed_at</code> automatically on status transition to <code>closed</code>.</p>
+  </div>
+
+  <!-- ═══ 10. FMEA Chain ═══════════════════════════════════════════════════ -->
+  <div class="section" id="s-fmea-chain">
+    <h2>10. FMEA → 900 → 520 → Deficiency Analytical Chain</h2>
+    <p>MOS implements a full analytical chain from engineering failure analysis through field troubleshooting and deficiency resolution. Each level produces formal documentation that feeds the next.</p>
+
+    <div class="chain">
+      <div class="chain-node">
+        <div class="cn-label">Engineering</div>
+        <div class="cn-title">FMEA Worksheet</div>
+        <div class="cn-sub">System Canvas Node</div>
+      </div>
+      <div class="chain-arrow">→</div>
+      <div class="chain-node">
+        <div class="cn-label">S1000D 900</div>
+        <div class="cn-title">Fault Description</div>
+        <div class="cn-sub">ops_fmea_worksheets.document_id</div>
+      </div>
+      <div class="chain-arrow">→</div>
+      <div class="chain-node">
+        <div class="cn-label">S1000D 520</div>
+        <div class="cn-title">Troubleshooting</div>
+        <div class="cn-sub">ops_deficiencies.document_id</div>
+      </div>
+      <div class="chain-arrow">→</div>
+      <div class="chain-node">
+        <div class="cn-label">Field Record</div>
+        <div class="cn-title">Deficiency</div>
+        <div class="cn-sub">Live fault instance</div>
+      </div>
+      <div class="chain-arrow">→</div>
+      <div class="chain-node">
+        <div class="cn-label">S1000D 200/720/730</div>
+        <div class="cn-title">Maintenance/Removal/Install</div>
+        <div class="cn-sub">ops_procedures.document_id</div>
+      </div>
+    </div>
+
+    <h3>Layer Descriptions</h3>
+    <table>
+      <thead><tr><th>Layer</th><th>Who Authors It</th><th>What It Contains</th><th>Database Link</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>FMEA Worksheet</strong></td>
+          <td>Reliability Engineer</td>
+          <td>Failure modes per system component. Severity (S), Occurrence (O), Detectability (D), RPN = S×O×D. RCM decisions. RPN ≥ 200 = Critical; ≥ 100 = High.</td>
+          <td><code>ops_fmea_worksheets</code>, <code>ops_fmea_entries</code></td>
+        </tr>
+        <tr>
+          <td><strong>900 DM — Fault Description</strong></td>
+          <td>Tech Writer / Engineer</td>
+          <td>Maintenance-facing view of the failure modes. Known fault codes, symptoms, probable causes, effects, and pointers to corrective procedures. Title steps = fault names. Use "Push Faults to FMEA" to sync titles as FMEA entries.</td>
+          <td><code>ops_fmea_worksheets.document_id</code></td>
+        </tr>
+        <tr>
+          <td><strong>520 DM — Troubleshooting</strong></td>
+          <td>Tech Writer</td>
+          <td>Procedural step-by-step fault isolation. Each step has a check, pass result, fail result (→ next step or corrective action). Written for the field technician, not the engineer.</td>
+          <td><code>ops_deficiencies.document_id</code></td>
+        </tr>
+        <tr>
+          <td><strong>Deficiency</strong></td>
+          <td>Field Technician</td>
+          <td>Live fault instance. Discovery method, severity, troubleshooting history, parts ordered, root cause, corrective action, actual costs. The 520 DM is the reference for fault isolation during this work.</td>
+          <td><code>ops_deficiencies</code></td>
+        </tr>
+        <tr>
+          <td><strong>200/720/730 DM</strong></td>
+          <td>Tech Writer</td>
+          <td>The maintenance procedure for actually fixing the fault. Can be linked from a PM Procedure or deficiency. Technician sees "📖 Open in Technical Manual" link.</td>
+          <td><code>ops_procedures.document_id</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══ 11. Supply & Inventory ═══════════════════════════════════════════ -->
+  <div class="section" id="s-supply">
+    <h2>11. Supply Requisition &amp; Inventory Control Rules</h2>
+
+    <h3>Requisition Status Workflow</h3>
+    <table>
+      <thead><tr><th>Status</th><th>Transition Condition</th></tr></thead>
+      <tbody>
+        <tr><td><code>requested</code></td><td>Initial state — submitted by technician or auto-generated.</td></tr>
+        <tr><td><code>approved</code></td><td>Approved by supervisor or logistics coordinator.</td></tr>
+        <tr><td><code>ordered</code></td><td>Purchase order placed with vendor.</td></tr>
+        <tr><td><code>received</code></td><td>Item physically received. On-hand stock updated.</td></tr>
+        <tr><td><code>cancelled</code></td><td>Requisition voided by logistics or supervisor.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>SRFQ Numbering</h3>
+    <p>Supply RFQ numbers auto-generate as <code>SRFQ-YYYY-NNN</code> (year + 3-digit zero-padded sequence, resetting annually per platform). The RFQ export includes: line items, NSN, CAGE code, quantity, unit of measure, estimated cost, terms and conditions, and authorized signature blocks.</p>
+
+    <h3>Cycle Count Classification</h3>
+    <table>
+      <thead><tr><th>Class</th><th>Criteria</th><th>Count Frequency</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-red">A</span></td><td>High-value or high-turnover items</td><td>Monthly</td></tr>
+        <tr><td><span class="badge badge-yellow">B</span></td><td>Medium-value or medium-turnover items</td><td>Quarterly</td></tr>
+        <tr><td><span class="badge badge-green">C</span></td><td>Low-value, low-movement items</td><td>Annual</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Quarterly Revalidation</h3>
+    <p>Open requisitions with no activity for 90+ days are flagged with <code>revalidation_required = true</code>. A banner appears on the requisition requiring the logistics coordinator to confirm the requirement is still active or cancel the requisition to prevent stale open orders.</p>
+  </div>
+
+  <!-- ═══ 12. API Conventions ══════════════════════════════════════════════ -->
+  <div class="section" id="s-api">
+    <h2>12. API Conventions</h2>
+    <p>All MOS APIs follow RESTful conventions routed through Nextcloud AppFramework. All requests require a valid Nextcloud session and a CSRF token (<code>requesttoken</code> header) on mutating operations.</p>
+
+    <h3>URL Patterns</h3>
+    <pre>GET    /apps/ops_suite/api/{resource}          — list
+GET    /apps/ops_suite/api/{resource}/{id}      — show
+POST   /apps/ops_suite/api/{resource}           — create
+PUT    /apps/ops_suite/api/{resource}/{id}      — update
+DELETE /apps/ops_suite/api/{resource}/{id}      — destroy</pre>
+
+    <h3>Response Format</h3>
+    <p>All responses return JSON. Success responses are 200 (GET, PUT), 201 (POST), or 204 (DELETE). Error responses include a <code>message</code> field. Standard HTTP error codes: 400 (bad request), 403 (forbidden), 404 (not found), 500 (server error).</p>
+
+    <h3>Key Resource Endpoints</h3>
+    <table>
+      <thead><tr><th>Resource</th><th>Base Path</th></tr></thead>
+      <tbody>
+        <tr><td>Assets</td><td><code>/api/assets</code></td></tr>
+        <tr><td>PM Procedures</td><td><code>/api/procedures</code></td></tr>
+        <tr><td>Deficiencies</td><td><code>/api/deficiencies</code></td></tr>
+        <tr><td>Documents / DMs</td><td><code>/api/documents</code></td></tr>
+        <tr><td>DM Steps</td><td><code>/api/documents/{id}/steps</code></td></tr>
+        <tr><td>Publications / IETM</td><td><code>/api/documents</code> (doc_type=publication)</td></tr>
+        <tr><td>FMEA Worksheets</td><td><code>/api/fmea/worksheets</code></td></tr>
+        <tr><td>FMEA Entries</td><td><code>/api/fmea/worksheets/{id}/entries</code></td></tr>
+        <tr><td>FMEA Sync from DM</td><td><code>/api/fmea/worksheets/{id}/sync-from-dm</code></td></tr>
+        <tr><td>Supply Requests</td><td><code>/api/supply-requests</code></td></tr>
+        <tr><td>Inventory</td><td><code>/api/inventory</code></td></tr>
+        <tr><td>LOTO Sessions</td><td><code>/api/loto/sessions</code></td></tr>
+        <tr><td>Canvases</td><td><code>/api/canvases</code></td></tr>
+        <tr><td>Settings</td><td><code>/api/settings</code></td></tr>
+        <tr><td>Seed MOS Docs</td><td><code>/api/settings/seed-docs</code> (POST)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="warn">⚠ The <code>/api/settings/seed-docs</code> endpoint creates a "Maintain Ops Suite" software asset and 18 Data Modules with 2 Publications. It is idempotent (checks for <code>pub_code = 'MOS-SM-001'</code> before seeding) but should only be called by an Administrator. It does not run inside a database transaction — a timeout on large databases may leave partial records.</div>
+  </div>
+
+</main>
+</div>
+
+<script>
+  // Highlight active nav item on scroll
+  var sections = document.querySelectorAll('.section');
+  var navLinks  = document.querySelectorAll('nav li a');
+  function onScroll() {
+    var scrollY = window.scrollY + 80;
+    var cur = '';
+    sections.forEach(function(s) { if (s.offsetTop <= scrollY) cur = s.id; });
+    navLinks.forEach(function(a) {
+      a.classList.toggle('active', a.getAttribute('href') === '#'+cur);
+    });
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  onScroll();
+</script>
+</body>
+</html>

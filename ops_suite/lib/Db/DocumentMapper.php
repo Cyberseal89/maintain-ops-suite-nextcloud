@@ -45,7 +45,8 @@ class DocumentMapper extends QBMapper {
         ?string $status          = null,
         array   $platformIds     = [],
         ?int    $modernizationId = null,
-        ?int    $canvasId        = null
+        ?int    $canvasId        = null,
+        ?string $docType         = null
     ): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')->from($this->getTableName());
@@ -67,8 +68,30 @@ class DocumentMapper extends QBMapper {
         if ($canvasId !== null) {
             $qb->andWhere($qb->expr()->eq('canvas_id', $qb->createNamedParameter($canvasId, IQueryBuilder::PARAM_INT)));
         }
+        if ($docType !== null) {
+            $qb->andWhere($qb->expr()->eq('doc_type', $qb->createNamedParameter($docType)));
+        }
         $qb->orderBy('doc_number', 'ASC');
         return $this->findEntities($qb);
+    }
+
+    /**
+     * When a DM advances its issue number, flag all publications that contain it.
+     * Called from DocumentController when in_work_number is reset to 0 (release).
+     */
+    public function flagReIssueForPublications(int $documentId): void {
+        // Find publication document IDs that reference this DM
+        $sub = $this->db->getQueryBuilder();
+        $sub->select('publication_id')->from('ops_publication_dms')
+            ->where($sub->expr()->eq('document_id', $sub->createNamedParameter($documentId, IQueryBuilder::PARAM_INT)));
+        $pubDocIds = array_column($sub->executeQuery()->fetchAllAssociative(), 'publication_id');
+        if (empty($pubDocIds)) return;
+
+        $qb = $this->db->getQueryBuilder();
+        $qb->update($this->getTableName())
+           ->set('re_issue_required', $qb->createNamedParameter(true, IQueryBuilder::PARAM_BOOL))
+           ->where($qb->expr()->in('id', $qb->createNamedParameter($pubDocIds, IQueryBuilder::PARAM_INT_ARRAY)));
+        $qb->executeStatement();
     }
 
     /** @return Document[] */

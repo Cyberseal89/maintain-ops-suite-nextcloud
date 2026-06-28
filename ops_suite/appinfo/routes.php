@@ -3,7 +3,9 @@ declare(strict_types=1);
 return [
     'routes' => [
         // ── Page ──────────────────────────────────────────────────
-        ['name' => 'page#index', 'url' => '/', 'verb' => 'GET'],
+        ['name' => 'page#index',    'url' => '/',             'verb' => 'GET'],
+        ['name' => 'page#swJs',    'url' => '/sw.js',         'verb' => 'GET'],
+        ['name' => 'page#manifest','url' => '/manifest.json', 'verb' => 'GET'],
 
         // ── MMBP Budget ───────────────────────────────────────────
         ['name' => 'mmbp_budget#index',   'url' => '/api/budget',         'verb' => 'GET'],
@@ -60,10 +62,11 @@ return [
         ['name' => 'user#groups', 'url' => '/api/groups', 'verb' => 'GET'],
 
         // ── Settings ──────────────────────────────────────────────
-        ['name' => 'settings#get',  'url' => '/api/settings',      'verb' => 'GET'],
-        ['name' => 'settings#me',   'url' => '/api/settings/me',   'verb' => 'GET'],
-        ['name' => 'settings#save', 'url' => '/api/settings',      'verb' => 'POST'],
-        ['name' => 'settings#seed', 'url' => '/api/settings/seed', 'verb' => 'POST'],
+        ['name' => 'settings#get',         'url' => '/api/settings',               'verb' => 'GET'],
+        ['name' => 'settings#me',          'url' => '/api/settings/me',            'verb' => 'GET'],
+        ['name' => 'settings#save',        'url' => '/api/settings',               'verb' => 'POST'],
+        ['name' => 'settings#seed',        'url' => '/api/settings/seed',          'verb' => 'POST'],
+        ['name' => 'settings#seedDocs',    'url' => '/api/settings/seed-docs',     'verb' => 'POST'],
 
         ['name' => 'page#manual',  'url' => '/user-manual', 'verb' => 'GET'],
 
@@ -142,6 +145,16 @@ return [
         ['name' => 'document#addRevision',    'url' => '/api/documents/{id}/revisions',           'verb' => 'POST'],
         ['name' => 'document#updateRevision', 'url' => '/api/documents/{id}/revisions/{revId}',   'verb' => 'PUT'],
         ['name' => 'document#deleteRevision', 'url' => '/api/documents/{id}/revisions/{revId}',   'verb' => 'DELETE'],
+        ['name' => 'document#getSteps',       'url' => '/api/documents/{id}/steps',               'verb' => 'GET'],
+        ['name' => 'document#saveSteps',      'url' => '/api/documents/{id}/steps',               'verb' => 'POST'],
+
+        // ── Publication DM management (publications merged into ops_documents) ──
+        ['name' => 'document#listPubDms',    'url' => '/api/documents/{id}/pub-dms',              'verb' => 'GET'],
+        ['name' => 'document#addPubDm',      'url' => '/api/documents/{id}/pub-dms',              'verb' => 'POST'],
+        ['name' => 'document#updatePubDm',   'url' => '/api/documents/{id}/pub-dms/{dmId}',       'verb' => 'PUT'],
+        ['name' => 'document#removePubDm',   'url' => '/api/documents/{id}/pub-dms/{dmId}',       'verb' => 'DELETE'],
+        ['name' => 'document#reorderPubDms', 'url' => '/api/documents/{id}/pub-dms/reorder',      'verb' => 'POST'],
+        ['name' => 'document#releasePub',    'url' => '/api/documents/{id}/release',              'verb' => 'POST'],
 
         // ── Platforms ─────────────────────────────────────────────
         ['name' => 'platform#index',      'url' => '/api/platforms',              'verb' => 'GET'],
@@ -196,12 +209,14 @@ return [
         ['name' => 'fmea#create_entry',       'url' => '/api/fmea/worksheets/{worksheetId}/entries',             'verb' => 'POST'],
         ['name' => 'fmea#update_entry',       'url' => '/api/fmea/worksheets/{worksheetId}/entries/{entryId}',   'verb' => 'PUT'],
         ['name' => 'fmea#destroy_entry',      'url' => '/api/fmea/worksheets/{worksheetId}/entries/{entryId}',   'verb' => 'DELETE'],
+        ['name' => 'fmea#sync_from_dm',      'url' => '/api/fmea/worksheets/{id}/sync-from-dm',                'verb' => 'POST'],
 
         // ── RCM Decisions ─────────────────────────────────────────
-        ['name' => 'rcm#index',   'url' => '/api/rcm/decisions',      'verb' => 'GET'],
-        ['name' => 'rcm#show',    'url' => '/api/rcm/decisions/{id}', 'verb' => 'GET'],
-        ['name' => 'rcm#upsert',  'url' => '/api/rcm/decisions',      'verb' => 'POST'],
-        ['name' => 'rcm#destroy', 'url' => '/api/rcm/decisions/{id}', 'verb' => 'DELETE'],
+        ['name' => 'rcm#index',      'url' => '/api/rcm/decisions',                 'verb' => 'GET'],
+        ['name' => 'rcm#show',       'url' => '/api/rcm/decisions/{id}',            'verb' => 'GET'],
+        ['name' => 'rcm#upsert',     'url' => '/api/rcm/decisions',                 'verb' => 'POST'],
+        ['name' => 'rcm#destroy',    'url' => '/api/rcm/decisions/{id}',            'verb' => 'DELETE'],
+        ['name' => 'rcm#generatePm', 'url' => '/api/rcm/decisions/{id}/generate-pm','verb' => 'POST'],
 
         // ── Component Library ─────────────────────────────────────
         ['name' => 'component_library#index',   'url' => '/api/component-library',      'verb' => 'GET'],
@@ -302,7 +317,12 @@ return [
         ['name' => 'altofleet#register',  'url' => '/api/altofleet/register',           'verb' => 'POST'],
         ['name' => 'altofleet#checkin',   'url' => '/api/altofleet/checkin',            'verb' => 'POST'],
         ['name' => 'altofleet#heartbeat', 'url' => '/api/altofleet/heartbeat',          'verb' => 'POST'],
-        ['name' => 'altofleet#nodeCves',  'url' => '/api/altofleet/nodes/{id}/cves',   'verb' => 'GET'],
+        ['name' => 'altofleet#nodeCves',       'url' => '/api/altofleet/nodes/{id}/cves',           'verb' => 'GET'],
+        ['name' => 'altofleet#forceScan',      'url' => '/api/altofleet/nodes/{id}/force-scan',      'verb' => 'POST'],
+        ['name' => 'altofleet#scheduleUpdate', 'url' => '/api/altofleet/nodes/{id}/schedule-update', 'verb' => 'POST'],
+        ['name' => 'altofleet#agentDownload', 'url' => '/api/altofleet/agent/download',          'verb' => 'GET'],
+        ['name' => 'altofleet#agentUpload',   'url' => '/api/altofleet/agent/upload',            'verb' => 'POST'],
+        ['name' => 'altofleet#agentVersion',  'url' => '/api/altofleet/agent/version',           'verb' => 'GET'],
 
         // ── Software Catalog (Sprint 6B) ──────────────────────────────────
         ['name' => 'software_catalog#catalogIndex',   'url' => '/api/software/catalog',                    'verb' => 'GET'],
@@ -313,7 +333,23 @@ return [
         ['name' => 'software_catalog#requestCreate',  'url' => '/api/software/requests',                   'verb' => 'POST'],
         ['name' => 'software_catalog#requestApprove', 'url' => '/api/software/requests/{id}/approve',      'verb' => 'POST'],
         ['name' => 'software_catalog#requestReject',  'url' => '/api/software/requests/{id}/reject',       'verb' => 'POST'],
-        ['name' => 'software_catalog#requestConfirm',  'url' => '/api/software/requests/{id}/confirm',      'verb' => 'POST'],
-        ['name' => 'software_catalog#repologyCheck',  'url' => '/api/software/repology',                   'verb' => 'GET'],
+        ['name' => 'software_catalog#requestConfirm',       'url' => '/api/software/requests/{id}/confirm', 'verb' => 'POST'],
+        ['name' => 'software_catalog#customRequestCreate', 'url' => '/api/software/requests/custom',       'verb' => 'POST'],
+        ['name' => 'software_catalog#repologyCheck',       'url' => '/api/software/repology',              'verb' => 'GET'],
+        ['name' => 'software_catalog#packageSearch',       'url' => '/api/software/search',                'verb' => 'GET'],
+
+        // ── Reports / Analytics (Sprint 5J) ──────────────────────────
+        ['name' => 'report#indexDashboards',  'url' => '/api/reports/dashboards',                              'verb' => 'GET'],
+        ['name' => 'report#createDashboard',  'url' => '/api/reports/dashboards',                              'verb' => 'POST'],
+        ['name' => 'report#showDashboard',    'url' => '/api/reports/dashboards/{id}',                         'verb' => 'GET'],
+        ['name' => 'report#updateDashboard',  'url' => '/api/reports/dashboards/{id}',                         'verb' => 'PUT'],
+        ['name' => 'report#destroyDashboard', 'url' => '/api/reports/dashboards/{id}',                         'verb' => 'DELETE'],
+        ['name' => 'report#createWidget',     'url' => '/api/reports/dashboards/{dashboardId}/widgets',         'verb' => 'POST'],
+        ['name' => 'report#updateWidget',     'url' => '/api/reports/dashboards/{dashboardId}/widgets/{widgetId}', 'verb' => 'PUT'],
+        ['name' => 'report#destroyWidget',    'url' => '/api/reports/dashboards/{dashboardId}/widgets/{widgetId}', 'verb' => 'DELETE'],
+        ['name' => 'report#widgetData',       'url' => '/api/reports/data/{metric}',                           'verb' => 'GET'],
+        ['name' => 'report#cyberReadiness',   'url' => '/api/reports/cyber-readiness',                         'verb' => 'GET'],
+        ['name' => 'report#fieldRegistry',    'url' => '/api/reports/fields',                                  'verb' => 'GET'],
+        ['name' => 'report#genericData',      'url' => '/api/reports/query',                                   'verb' => 'GET'],
     ],
 ];

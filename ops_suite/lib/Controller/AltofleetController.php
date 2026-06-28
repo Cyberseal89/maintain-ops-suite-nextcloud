@@ -15,12 +15,17 @@ use OCP\AppFramework\Controller;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataResponse;
+use OCP\AppFramework\Http\Response;
 use OCP\IGroupManager;
+use OCP\IConfig;
 use OCP\IRequest;
 use OCP\IUserSession;
 use OCP\Notification\IManager as INotificationManager;
 
 class AltofleetController extends Controller {
+
+    // Path inside Nextcloud's data dir where the current agent file is stored
+    private const AGENT_STORAGE_PATH = 'ops_suite/altofleet-agent.py';
 
     public function __construct(
         string                          $appName,
@@ -33,6 +38,7 @@ class AltofleetController extends Controller {
         private readonly SoftwareCatalogMapper $softwareCatalogMapper,
         private readonly CveScanResultMapper   $cveScanMapper,
         private readonly DeficiencyMapper      $deficiencyMapper,
+        private readonly IConfig               $config,
     ) {
         parent::__construct($appName, $request);
     }
@@ -216,29 +222,66 @@ class AltofleetController extends Controller {
         } catch (\Exception) {}
 
         // Process CVE scan results if included
-        $cveScan = $data['cve_scan'] ?? null;
+        $cveError = null;
+        $cveScanRaw = $data['cve_scan'] ?? null;
+        $cveScan = is_string($cveScanRaw) ? json_decode($cveScanRaw, true) : (is_array($cveScanRaw) ? $cveScanRaw : null);
         if (is_array($cveScan) && !empty($cveScan['cves'])) {
-            $this->processCveScan($node, $cveScan, $adminUids);
+            try {
+                $this->processCveScan($node, $cveScan, $adminUids);
+            } catch (\Throwable $e) {
+                $cveError = $e->getMessage() . ' in ' . basename($e->getFile()) . ':' . $e->getLine();
+            }
         }
 
         // Tell the agent whether it needs to run a CVE scan
-        $needsCveScan = false;
-        $lastScan = $node->getLastCveScan();
-        if (!$lastScan || (time() - strtotime($lastScan)) > 604800) {
-            $needsCveScan = true;
+        $forceScan = (bool)$node->getForceScan();
+        $lastScan  = $node->getLastCveScan();
+        $needsCveScan = $forceScan || !$lastScan || (time() - strtotime($lastScan)) > 604800;
+
+        // Clear force_scan flag once we've told the agent to run it
+        if ($forceScan) {
+            $node->setForceScan(false);
+            $this->mapper->update($node);
+        }
+
+        // Check if we need to trigger a security update on the agent
+        $pendingUpdate = (bool)$node->getPendingUpdate();
+
+        // Check whether the agent needs to update itself
+        $targetVersion = $this->config->getAppValue('ops_suite', 'agent_target_version', '');
+        $currentVersion = $node->getAgentVersion() ?? '';
+        $agentUpdateAvailable = $targetVersion && $currentVersion
+            && version_compare($currentVersion, $targetVersion, '<');
+        $agentDownloadUrl = '';
+        if ($agentUpdateAvailable) {
+            $ncUrl = rtrim($this->config->getSystemValue('overwrite.cli.url', ''), '/');
+            $agentDownloadUrl = $ncUrl . '/apps/ops_suite/api/altofleet/agent/download';
         }
 
         $response = $node->jsonSerialize();
-        $response['pending_installs'] = $pending;
-        $response['needs_cve_scan']   = $needsCveScan;
+        $response['pending_installs']       = $pending;
+        $response['needs_cve_scan']         = $needsCveScan;
+        $response['pending_update']         = $pendingUpdate;
+        $response['pending_agent_update']   = $agentUpdateAvailable;
+        $response['agent_target_version']   = $targetVersion ?: null;
+        $response['agent_download_url']     = $agentDownloadUrl ?: null;
+        $response['cve_debug'] = [
+            'cveScanIsNull'   => $cveScan === null,
+            'cveScanIsArray'  => is_array($cveScan),
+            'cvesCount'       => is_array($cveScan) ? count($cveScan['cves'] ?? []) : -1,
+            'cveError'        => $cveError,
+        ];
         return new DataResponse($response);
     }
 
     private function processCveScan(AltofleetNode $node, array $scan, array $adminUids): void {
         $now       = date('Y-m-d H:i:s');
-        $scannedAt = $scan['scanned_at'] ?? $now;
+        $scannedAt = date('Y-m-d H:i:s', strtotime($scan['scanned_at'] ?? $now));
         $cves      = $scan['cves'] ?? [];
         $nodeId    = $node->getId();
+
+        // Grab existing deficiency ID before deleting rows (deleteByNode wipes deficiency_id links)
+        $existingDefId = $this->cveScanMapper->findOpenCveDeficiency($nodeId);
 
         // Replace all CVE records for this node
         $this->cveScanMapper->deleteByNode($nodeId);
@@ -273,24 +316,29 @@ class AltofleetController extends Controller {
             $this->cveScanMapper->insert($r);
         }
 
-        // Update node's last_cve_scan timestamp
+        // Update node's last_cve_scan timestamp and clear pending_update
         $node->setLastCveScan($now);
+        $node->setPendingUpdate(false);
         $this->mapper->update($node);
 
-        // Auto-create or update Deficiency for CRITICAL/HIGH findings
+        // Auto-create or update a single Deficiency for CRITICAL/HIGH findings
         if ($critCount > 0 || $highCount > 0) {
-            $defSev   = $critCount > 0 ? 'SEV-1' : 'SEV-2';
-            $summary  = 'CVE Scan: '.$critCount.' Critical, '.$highCount.' High vulnerabilities on '.$node->getHostname();
+            $defSev  = $critCount > 0 ? 'SEV-1' : 'SEV-2';
+            $summary = 'CVE Scan: '.$critCount.' Critical, '.$highCount.' High vulnerabilities on '.$node->getHostname();
 
             try {
-                // Check if we already have an open CVE deficiency for this node
-                $existingDefId = $this->cveScanMapper->findOpenCveDeficiency($nodeId);
                 if ($existingDefId) {
                     $def = $this->deficiencyMapper->find($existingDefId);
                     $def->setSummary($summary);
                     $def->setSeverity($defSev);
+                    $def->setDescription(
+                        'Automated CVE scan on '.$node->getHostname().' ('.$node->getIpAddress().') '
+                        .'detected '.$critCount.' Critical and '.$highCount.' High severity vulnerabilities. '
+                        .'Run patch updates to resolve. See Infrastructure → Fleet Nodes → '.$node->getHostname().' → CVE Scan for details.'
+                    );
                     $def->setUpdatedAt($now);
                     $this->deficiencyMapper->update($def);
+                    $this->cveScanMapper->setDeficiencyForNode($nodeId, $existingDefId);
                 } else {
                     $def = new Deficiency();
                     $def->setSummary($summary);
@@ -315,16 +363,138 @@ class AltofleetController extends Controller {
                     $def->setCreatedAt($now);
                     $def->setUpdatedAt($now);
                     $createdDef = $this->deficiencyMapper->insert($def);
-
-                    // Link deficiency back to all CVE rows for this node
                     $this->cveScanMapper->setDeficiencyForNode($nodeId, $createdDef->getId());
-
                     $this->notifyAdmins($adminUids, 'node_alert', $node, [
                         'message' => $summary,
                     ]);
                 }
             } catch (\Exception) {}
         }
+    }
+
+    /**
+     * POST /api/altofleet/nodes/{id}/force-scan
+     * @NoAdminRequired
+     */
+    public function forceScan(int $id): DataResponse {
+        try {
+            $node = $this->mapper->find($id);
+        } catch (DoesNotExistException) {
+            return new DataResponse(['message' => 'Not found'], Http::STATUS_NOT_FOUND);
+        }
+        $node->setForceScan(true);
+        $node->setUpdatedAt(date('Y-m-d H:i:s'));
+        return new DataResponse($this->mapper->update($node)->jsonSerialize());
+    }
+
+    /**
+     * POST /api/altofleet/nodes/{id}/schedule-update
+     * @NoAdminRequired
+     */
+    public function scheduleUpdate(int $id): DataResponse {
+        try {
+            $node = $this->mapper->find($id);
+        } catch (DoesNotExistException) {
+            return new DataResponse(['message' => 'Not found'], Http::STATUS_NOT_FOUND);
+        }
+        $node->setPendingUpdate(true);
+        $node->setUpdatedAt(date('Y-m-d H:i:s'));
+        return new DataResponse($this->mapper->update($node)->jsonSerialize());
+    }
+
+    /**
+     * GET /api/altofleet/agent/download
+     * Serves the current agent file to authenticated agents.
+     * The agent calls this when pending_agent_update is true in the checkin response.
+     *
+     * @NoAdminRequired
+     * @PublicPage
+     */
+    public function agentDownload(): Response {
+        $uuid = $this->request->getParam('uuid', '');
+        if (!$uuid || !$this->mapper->findByUuid($uuid)) {
+            $r = new Response(); $r->setStatus(Http::STATUS_UNAUTHORIZED); return $r;
+        }
+
+        $dataDir   = \OC::$SERVERROOT . '/data';
+        $agentPath = $dataDir . '/' . self::AGENT_STORAGE_PATH;
+
+        if (!file_exists($agentPath)) {
+            $r = new Response(); $r->setStatus(Http::STATUS_NOT_FOUND); return $r;
+        }
+
+        $content  = file_get_contents($agentPath);
+        $version  = $this->config->getAppValue('ops_suite', 'agent_target_version', 'unknown');
+        $response = new Response();
+        $response->addHeader('Content-Type', 'text/x-python');
+        $response->addHeader('Content-Disposition', 'attachment; filename="altofleet-agent.py"');
+        $response->addHeader('X-Agent-Version', $version);
+        $response->addHeader('Content-Length', (string)strlen($content));
+        // Stream the file body manually via a callback response
+        // (Nextcloud DataResponse would JSON-encode it)
+        ob_start();
+        echo $content;
+        ob_end_flush();
+        return $response;
+    }
+
+    /**
+     * POST /api/altofleet/agent/upload
+     * Admin uploads a new agent file and sets the target version.
+     * The file is stored in data/ops_suite/altofleet-agent.py.
+     *
+     * @NoAdminRequired
+     */
+    public function agentUpload(): DataResponse {
+        if (!$this->isAdminUser()) {
+            return new DataResponse(['message' => 'Admin required'], Http::STATUS_FORBIDDEN);
+        }
+
+        $version = trim($this->request->getParam('version', ''));
+        $content = $this->request->getParam('content', '');
+
+        if (!$version || !$content) {
+            return new DataResponse(['message' => 'version and content are required'], Http::STATUS_BAD_REQUEST);
+        }
+
+        // Basic sanity check — must start with a Python shebang or import
+        if (!str_contains($content, 'import') || !str_contains($content, 'def ')) {
+            return new DataResponse(['message' => 'Content does not look like a Python file'], Http::STATUS_BAD_REQUEST);
+        }
+
+        $dataDir   = \OC::$SERVERROOT . '/data';
+        $storageDir = $dataDir . '/ops_suite';
+        if (!is_dir($storageDir)) {
+            mkdir($storageDir, 0750, true);
+        }
+        $agentPath = $storageDir . '/altofleet-agent.py';
+
+        // Keep one backup of the previous version
+        if (file_exists($agentPath)) {
+            copy($agentPath, $agentPath . '.bak');
+        }
+
+        file_put_contents($agentPath, $content);
+        $this->config->setAppValue('ops_suite', 'agent_target_version', $version);
+
+        return new DataResponse([
+            'message'         => 'Agent updated',
+            'target_version'  => $version,
+            'bytes'           => strlen($content),
+        ]);
+    }
+
+    /**
+     * GET /api/altofleet/agent/version
+     * Returns the current target agent version. Public so agents can check without auth.
+     *
+     * @NoAdminRequired
+     * @PublicPage
+     */
+    public function agentVersion(): DataResponse {
+        return new DataResponse([
+            'target_version' => $this->config->getAppValue('ops_suite', 'agent_target_version', ''),
+        ]);
     }
 
     /**
@@ -368,6 +538,12 @@ class AltofleetController extends Controller {
 
         $node->setLastSeen($now);
         $node->setUpdatedAt($now);
+
+        $trivyDbReady = $this->request->getParam('trivy_db_ready');
+        if ($trivyDbReady !== null) {
+            $node->setTrivyDbReady((bool)$trivyDbReady);
+        }
+
         $this->mapper->update($node);
 
         return new DataResponse(['ok' => true, 'last_seen' => $now]);
@@ -434,6 +610,11 @@ class AltofleetController extends Controller {
                 // Non-fatal — notification failure never breaks the API response
             }
         }
+    }
+
+    private function isAdminUser(): bool {
+        $user = $this->userSession->getUser();
+        return $user && $this->groupManager->isInGroup($user->getUID(), 'admin');
     }
 
     /** @return string[] */

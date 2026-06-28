@@ -6,7 +6,7 @@
 /* ── Layout ─────────────────────────────────────────────────── */
 #ops-suite-wrapper {
   display: flex; flex-direction: row;
-  width: 100%; height: 100vh; overflow: hidden;
+  width: 100%; height: 100%; min-height: 0; overflow: hidden;
   background: #1a1f2e !important;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px; color: #cbd5e1;
@@ -17,7 +17,11 @@
   display: flex; flex-direction: column;
   background: #0f172a !important;
   height: 100%; overflow-y: auto; overflow-x: hidden;
+  padding-bottom: 24px;
 }
+
+#ops-sidebar::-webkit-scrollbar { width: 4px; }
+#ops-sidebar::-webkit-scrollbar-thumb { background: #1e3050; border-radius: 4px; }
 
 #ops-main {
   flex: 1; min-width: 0;

@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace OCA\OpsSuite\Controller;
 
 use OCA\OpsSuite\Migration\SeedFailureModes;
+use OCA\OpsSuite\Service\DocumentationSeeder;
 use OCA\OpsSuite\Service\PermissionService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\DataResponse;
@@ -38,6 +39,9 @@ class SettingsController extends Controller {
         }
         // Legacy key — keep for backwards compat
         $data['editor_group'] = $this->config->getAppValue(self::APP_ID, 'editor_group', '');
+        // Section visibility
+        $enabledRaw = $this->config->getAppValue(self::APP_ID, 'enabled_sections', '');
+        $data['enabled_sections'] = $enabledRaw ? json_decode($enabledRaw, true) : null;
         return new DataResponse($data);
     }
 
@@ -63,6 +67,13 @@ class SettingsController extends Controller {
         $editorGroup = trim($this->request->getParam('editor_group', ''));
         $this->config->setAppValue(self::APP_ID, 'editor_group', $editorGroup);
 
+        // Section visibility
+        $enabledSections = $this->request->getParam('enabled_sections', null);
+        if ($enabledSections !== null) {
+            $val = is_array($enabledSections) ? json_encode($enabledSections) : $enabledSections;
+            $this->config->setAppValue(self::APP_ID, 'enabled_sections', $val);
+        }
+
         return $this->get();
     }
 
@@ -73,12 +84,27 @@ class SettingsController extends Controller {
         }
         $step = new SeedFailureModes($this->db);
         $step->run(new class implements IOutput {
-            public function info(string $message): void {}
-            public function warning(string $message): void {}
-            public function startProgress(int $max = 0): void {}
-            public function advance(int $step = 1, string $description = ''): void {}
-            public function finishProgress(): void {}
+            public function info($message) {}
+            public function warning($message) {}
+            public function startProgress($max = 0) {}
+            public function advance($step = 1, $description = '') {}
+            public function finishProgress() {}
         });
         return new DataResponse(['message' => 'Seeded']);
+    }
+
+    /** @NoAdminRequired */
+    public function seedDocs(): DataResponse {
+        if (!$this->permission->canAdmin()) {
+            return new DataResponse(['message' => 'Insufficient permissions'], 403);
+        }
+        $uid = \OC::$server->getUserSession()->getUser()?->getUID() ?? 'system';
+        $seeder = new DocumentationSeeder($this->db);
+        try {
+            $result = $seeder->seed($uid);
+            return new DataResponse($result);
+        } catch (\Throwable $e) {
+            return new DataResponse(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
     }
 }

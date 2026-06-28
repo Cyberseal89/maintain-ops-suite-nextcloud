@@ -16,6 +16,7 @@ use OCP\AppFramework\Controller;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataResponse;
+use OCP\IDBConnection;
 use OCP\IRequest;
 use OCP\IUserSession;
 
@@ -30,6 +31,7 @@ class FmeaController extends Controller {
         private readonly DocumentRevisionMapper $revMapper,
         private readonly PermissionService      $permission,
         private readonly IUserSession           $userSession,
+        private readonly IDBConnection          $db,
     ) {
         parent::__construct($appName, $request);
     }
@@ -104,8 +106,9 @@ class FmeaController extends Controller {
         try {
             $ws   = $this->wsMapper->find($id);
             $data = $this->request->getParams();
-            if (array_key_exists('title',  $data)) $ws->setTitle($data['title']);
-            if (array_key_exists('status', $data)) $ws->setStatus($data['status']);
+            if (array_key_exists('title',       $data)) $ws->setTitle($data['title']);
+            if (array_key_exists('status',      $data)) $ws->setStatus($data['status']);
+            if (array_key_exists('document_id', $data)) $ws->setDocumentId($data['document_id'] ? (int)$data['document_id'] : null);
             $ws->setUpdatedAt(date('Y-m-d H:i:s'));
             return new DataResponse($this->wsMapper->update($ws)->jsonSerialize());
         } catch (DoesNotExistException) {
@@ -318,5 +321,157 @@ class FmeaController extends Controller {
             'document'  => $doc->jsonSerialize(),
             'revision'  => $rev->jsonSerialize(),
         ], Http::STATUS_CREATED);
+    }
+
+    /**
+     * Reads the title steps from a 900-series DM linked to this worksheet
+     * and creates skeleton FMEA entries for any fault not already present.
+     * The engineer then fills in severity/occurrence/detectability values.
+     *
+     * @NoAdminRequired
+     */
+    public function syncFromDm(int $id): DataResponse {
+        if (!$this->permission->canWrite()) {
+            return new DataResponse(['message' => 'Insufficient permissions'], Http::STATUS_FORBIDDEN);
+        }
+        try {
+            $ws = $this->wsMapper->find($id);
+        } catch (DoesNotExistException) {
+            return new DataResponse(['message' => 'Worksheet not found'], Http::STATUS_NOT_FOUND);
+        }
+
+        $dmId = $ws->getDocumentId();
+        if (!$dmId) {
+            return new DataResponse(['message' => 'No 900 DM linked to this worksheet. Link a Fault Description DM first.'], Http::STATUS_BAD_REQUEST);
+        }
+
+        // Fetch ALL steps from the 900 DM in sort order
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('step_type', 'content', 'step_order')
+           ->from('ops_dm_steps')
+           ->where($qb->expr()->eq('document_id', $qb->createNamedParameter($dmId, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_INT)))
+           ->orderBy('step_order', 'ASC');
+        $result   = $qb->executeQuery();
+        $allSteps = $result->fetchAllAssociative();
+        $result->closeCursor();
+
+        if (empty($allSteps)) {
+            return new DataResponse(['message' => 'No steps found in the linked 900 DM.', 'created' => 0, 'updated' => 0]);
+        }
+
+        // Group steps into fault sections — each 'title' step opens a new section.
+        // Within a section:  action steps → detection method
+        //                    substep lines → local effect (observed results / isolations)
+        //                    warning lines → notes (hazards)
+        $sections = [];
+        $current  = null;
+        foreach ($allSteps as $step) {
+            $type    = $step['step_type'] ?? '';
+            $content = trim($step['content'] ?? '');
+            if (!$content) continue;
+
+            if ($type === 'title') {
+                if ($current !== null) $sections[] = $current;
+                $current = [
+                    'title'      => $content,
+                    'warnings'   => [],
+                    'actions'    => [],
+                    'substeps'   => [],
+                    'sort_order' => (int)($step['step_order'] ?? 0),
+                ];
+            } elseif ($current !== null) {
+                if ($type === 'warning') $current['warnings'][] = $content;
+                if ($type === 'action')  $current['actions'][]  = $content;
+                if ($type === 'substep') $current['substeps'][] = $content;
+            }
+        }
+        if ($current !== null) $sections[] = $current;
+
+        if (empty($sections)) {
+            return new DataResponse(['message' => 'No fault title sections found in the 900 DM. Add "Fault Description" title steps to define fault modes.', 'created' => 0, 'updated' => 0]);
+        }
+
+        // Index existing entries by normalised failure_mode for merge lookup
+        $existing = $this->entryMapper->findByWorksheet($id);
+        $byMode   = [];
+        foreach ($existing as $e) {
+            $byMode[strtolower(trim($e->getFailureMode() ?? ''))] = $e;
+        }
+
+        $now     = date('Y-m-d H:i:s');
+        $created = 0;
+        $updated = 0;
+
+        foreach ($sections as $idx => $sec) {
+            $faultTitle      = $sec['title'];
+            $detectionMethod = implode(' ', $sec['actions']);
+            $localEffect     = implode(' ', $sec['substeps']);
+            $warnings        = implode(' | ', $sec['warnings']);
+            $notes           = ($warnings ? $warnings.' | ' : '').'Merged from DM #'.$dmId;
+
+            $modeKey = strtolower($faultTitle);
+
+            if (isset($byMode[$modeKey])) {
+                // Enrich existing entry — fill blank fields only; never overwrite user edits.
+                // Use null-coalesce because DB columns may return null even when typed string.
+                $entry   = $byMode[$modeKey];
+                $changed = false;
+
+                if (!trim($entry->getDetectionMethod() ?? '') && $detectionMethod) {
+                    $entry->setDetectionMethod($detectionMethod);
+                    $changed = true;
+                }
+                if (!trim($entry->getLocalEffect() ?? '') && $localEffect) {
+                    $entry->setLocalEffect($localEffect);
+                    $changed = true;
+                }
+                if (!trim($entry->getNotes() ?? '')) {
+                    $entry->setNotes($notes);
+                    $changed = true;
+                }
+
+                if ($changed) {
+                    $entry->setUpdatedAt($now);
+                    $this->entryMapper->update($entry);
+                    $updated++;
+                }
+            } else {
+                // Create new FMEA entry pre-populated from the 900 DM section
+                $entry = new FmeaEntry();
+                $entry->setWorksheetId($id);
+                $entry->setFunction('');
+                $entry->setFailureMode($faultTitle);
+                $entry->setLocalEffect($localEffect);
+                $entry->setSystemEffect('');
+                $entry->setDetectionMethod($detectionMethod);
+                $entry->setSeverity(1);
+                $entry->setOccurrence(1);
+                $entry->setDetectability(1);
+                $entry->setRpn(1);
+                $entry->setRecommendedAction('');
+                $entry->setResponsibleParty('');
+                $entry->setActionTaken('');
+                $entry->setNotes($notes);
+                $entry->setSortOrder(($idx + 1) * 10);
+                $entry->setCreatedAt($now);
+                $entry->setUpdatedAt($now);
+                $this->entryMapper->insert($entry);
+                $created++;
+            }
+        }
+
+        $ws->setUpdatedAt($now);
+        $this->wsMapper->update($ws);
+
+        if ($created === 0 && $updated === 0) {
+            $msg = 'All fault modes already exist with complete data — nothing to merge.';
+        } else {
+            $parts = [];
+            if ($created) $parts[] = "$created new entries created";
+            if ($updated) $parts[] = "$updated existing entries enriched";
+            $msg = 'Merge complete: '.implode(', ', $parts).'.';
+        }
+
+        return new DataResponse(['created' => $created, 'updated' => $updated, 'message' => $msg]);
     }
 }
